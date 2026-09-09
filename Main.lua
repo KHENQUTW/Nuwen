@@ -1131,6 +1131,8 @@ local Library = {
     _currentTheme = "Dark",
     TagSystem     = TagSystem,
 }
+_G.OxideLib = Library
+
 local Window = {}; Window.__index = Window
 local Tab    = {};    Tab.__index = Tab
 local SubTab = {}; SubTab.__index = SubTab
@@ -4330,9 +4332,11 @@ _G.OxideStealAnEgg = HUB
 local function track(conn) table.insert(HUB.conns, conn); return conn end
 local function trackDrawing(d) if d then table.insert(HUB.drawings, d) end; return d end
 
-local Window = Library:CreateWindow({
+_G.OxideLib = Library
+
+local EggWindow = Library:CreateWindow({
     Name = "Instant EGG",
-    LoadingAnimation = true,
+    LoadingAnimation = false,
     LoadingText = "Instant EGG",
     LoadingDuration = 1.2,
     LoadingSubtitle = "Egg Automation",
@@ -4404,7 +4408,7 @@ end)
 
 local function Notify(title, content, kind, dur)
     pcall(function()
-        Window:Notify({ Title = title, Content = content, Type = kind or "Info", Duration = dur or 2.5 })
+        EggWindow:Notify({ Title = title, Content = content, Type = kind or "Info", Duration = dur or 2.5 })
     end)
 end
 
@@ -6763,11 +6767,11 @@ end
 -- ==============================================================================
 -- UI CREATION - MAIN TABS
 -- ==============================================================================
-local EggsTab     = Window:AddTab({ Name = "Eggs", Subtitle = "Steal, hatch & plant", Icon = "crown" })
-local BaseTab     = Window:AddTab({ Name = "Base", Subtitle = "Homestead & training", Icon = "bolt" })
-local CombatTab   = Window:AddTab({ Name = "Combat", Subtitle = "Bat, slaps & defense", Icon = "combat" })
-local PlayerTab   = Window:AddTab({ Name = "Player", Subtitle = "Movement & teleports", Icon = "player" })
-local SettingsTab = Window:AddTab({ Name = "Settings", Subtitle = "Configs & unloader", Icon = "gear" })
+local EggsTab     = EggWindow:AddTab({ Name = "Eggs", Subtitle = "Steal, hatch & plant", Icon = "crown" })
+local BaseTab     = EggWindow:AddTab({ Name = "Base", Subtitle = "Homestead & training", Icon = "bolt" })
+local CombatTab   = EggWindow:AddTab({ Name = "Combat", Subtitle = "Bat, slaps & defense", Icon = "combat" })
+local PlayerTab   = EggWindow:AddTab({ Name = "Player", Subtitle = "Movement & teleports", Icon = "player" })
+local SettingsTab = EggWindow:AddTab({ Name = "Settings", Subtitle = "Configs & unloader", Icon = "gear" })
 
 -- -----------------------------------------------------------------------------
 -- TAB 1: EGGS
@@ -7275,7 +7279,7 @@ end
 ConfigSub:AddKeybind({
     Name = "Toggle UI Keybind", Default = Enum.KeyCode.RightControl, Flag = "ui_toggle_key",
     OnPress = function()
-        Window:Toggle()
+        EggWindow:Toggle()
     end
 })
 
@@ -7319,7 +7323,7 @@ HUB.Unload = function()
         hum.JumpPower = 50
     end
 
-    pcall(function() Window:Destroy() end)
+    pcall(function() EggWindow:Destroy() end)
     _G.OxideStealAnEgg = nil
 end
 
