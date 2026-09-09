@@ -1,3 +1,15 @@
+--[[
+    Instant EGG — Standalone build
+    Combines the original UI library and Steal An Egg script into one file.
+
+    The UI library is isolated inside its own function scope so the large library
+    locals do not consume the game script's local-register budget.
+]]
+
+-- The original loader exposes the library as a global binding before the game
+-- script executes. We preserve that contract here without adding a top-level
+-- local binding.
+Library = (function()
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -149,10 +161,10 @@ local C = {
     HotbarActive = Color3.fromRGB(31, 31, 31),
     HotbarHover  = Color3.fromRGB(38, 38, 38),
     HotbarDot    = Color3.fromRGB(220, 220, 220),
-    Accent       = Color3.fromRGB(214, 232, 122),
-    AccentDim    = Color3.fromRGB(48, 58, 24),
-    AccentText   = Color3.fromRGB(18, 22, 8),
-    KnobAccent   = Color3.fromRGB(20, 24, 9),
+    Accent       = Color3.fromRGB(167, 200, 244),
+    AccentDim    = Color3.fromRGB(26, 46, 74),
+    AccentText   = Color3.fromRGB(10, 16, 26),
+    KnobAccent   = Color3.fromRGB(16, 22, 32),
 }
 
 local THEMES = {
@@ -180,10 +192,10 @@ local THEMES = {
         HotbarActive = Color3.fromRGB(235, 235, 235),
         HotbarHover  = Color3.fromRGB(229, 229, 229),
         HotbarDot    = Color3.fromRGB(60, 60, 60),
-        Accent       = Color3.fromRGB(145, 170, 72),
-        AccentDim    = Color3.fromRGB(216, 228, 175),
-        AccentText   = Color3.fromRGB(35, 42, 12),
-        KnobAccent   = Color3.fromRGB(252, 255, 238),
+        Accent       = Color3.fromRGB(94, 148, 214),
+        AccentDim    = Color3.fromRGB(198, 220, 248),
+        AccentText   = Color3.fromRGB(255, 255, 255),
+        KnobAccent   = Color3.fromRGB(255, 255, 255),
     },
     OLED = {
         WindowBg     = Color3.fromRGB(0, 0, 0),
@@ -208,10 +220,10 @@ local THEMES = {
         HotbarActive = Color3.fromRGB(12, 12, 12),
         HotbarHover  = Color3.fromRGB(20, 20, 20),
         HotbarDot    = Color3.fromRGB(200, 200, 200),
-        Accent       = Color3.fromRGB(194, 218, 105),
-        AccentDim    = Color3.fromRGB(38, 48, 18),
-        AccentText   = Color3.fromRGB(20, 25, 7),
-        KnobAccent   = Color3.fromRGB(18, 22, 7),
+        Accent       = Color3.fromRGB(178, 210, 250),
+        AccentDim    = Color3.fromRGB(16, 32, 56),
+        AccentText   = Color3.fromRGB(5, 9, 16),
+        KnobAccent   = Color3.fromRGB(8, 12, 20),
     },
 }
 
@@ -1131,8 +1143,6 @@ local Library = {
     _currentTheme = "Dark",
     TagSystem     = TagSystem,
 }
-_G.OxideLib = Library
-
 local Window = {}; Window.__index = Window
 local Tab    = {};    Tab.__index = Tab
 local SubTab = {}; SubTab.__index = SubTab
@@ -4314,12 +4324,11 @@ function SubTab:AddComponents(list)
     return handles
 end
 
+end)()
 
+_G.OxideLib = Library
 
--- === HUB STRIP POINT - when executed through the hub ScriptLoader, which injects
---     "local Library = _G.OxideLib" above this line instead. ===
--- ==============================================================================
-
+-- ===== Original game script =====
 -- ==============================================================================
 -- RE-EXECUTION GUARD + RESOURCE TRACKING
 -- ==============================================================================
@@ -4332,15 +4341,11 @@ _G.OxideStealAnEgg = HUB
 local function track(conn) table.insert(HUB.conns, conn); return conn end
 local function trackDrawing(d) if d then table.insert(HUB.drawings, d) end; return d end
 
-_G.OxideLib = Library
-
-local EggWindow = Library:CreateWindow({
+local Window = Library:CreateWindow({
     Name = "Instant EGG",
     LoadingAnimation = false,
     LoadingText = "Instant EGG",
-    LoadingDuration = 1.2,
-    LoadingSubtitle = "Egg Automation",
-    GuiName = "InstantEGGUI",
+    LoadingDuration = 2.0,
 })
 
 -- ==============================================================================
@@ -4349,7 +4354,7 @@ local EggWindow = Library:CreateWindow({
 local HAS_CONFIG = type(Library.SaveConfig) == "function"
     and type(Library.LoadConfig) == "function"
     and type(Library.ListConfigs) == "function"
-local CONFIG_NAME = "instantegg"
+local CONFIG_NAME = "stealanegg"
 
 local dropdownResync = {}
 local function registerResync(handle, applyFn)
@@ -4408,7 +4413,7 @@ end)
 
 local function Notify(title, content, kind, dur)
     pcall(function()
-        EggWindow:Notify({ Title = title, Content = content, Type = kind or "Info", Duration = dur or 2.5 })
+        Window:Notify({ Title = title, Content = content, Type = kind or "Info", Duration = dur or 2.5 })
     end)
 end
 
@@ -6767,11 +6772,11 @@ end
 -- ==============================================================================
 -- UI CREATION - MAIN TABS
 -- ==============================================================================
-local EggsTab     = EggWindow:AddTab({ Name = "Eggs", Subtitle = "Steal, hatch & plant", Icon = "crown" })
-local BaseTab     = EggWindow:AddTab({ Name = "Base", Subtitle = "Homestead & training", Icon = "bolt" })
-local CombatTab   = EggWindow:AddTab({ Name = "Combat", Subtitle = "Bat, slaps & defense", Icon = "combat" })
-local PlayerTab   = EggWindow:AddTab({ Name = "Player", Subtitle = "Movement & teleports", Icon = "player" })
-local SettingsTab = EggWindow:AddTab({ Name = "Settings", Subtitle = "Configs & unloader", Icon = "gear" })
+local EggsTab     = Window:AddTab({ Name = "Eggs", Subtitle = "Steal, hatch & plant", Icon = "crown" })
+local BaseTab     = Window:AddTab({ Name = "Base", Subtitle = "Homestead & training", Icon = "bolt" })
+local CombatTab   = Window:AddTab({ Name = "Combat", Subtitle = "Bat, slaps & defense", Icon = "combat" })
+local PlayerTab   = Window:AddTab({ Name = "Player", Subtitle = "Movement & teleports", Icon = "player" })
+local SettingsTab = Window:AddTab({ Name = "Settings", Subtitle = "Configs & unloader", Icon = "gear" })
 
 -- -----------------------------------------------------------------------------
 -- TAB 1: EGGS
@@ -7279,22 +7284,22 @@ end
 ConfigSub:AddKeybind({
     Name = "Toggle UI Keybind", Default = Enum.KeyCode.RightControl, Flag = "ui_toggle_key",
     OnPress = function()
-        EggWindow:Toggle()
+        Window:Toggle()
     end
 })
 
 ConfigSub:AddDivider()
 
 ConfigSub:AddButton({
-    Name = "Unload Instant EGG",
+    Name = "Unload Oxide HUB",
     Callback = safeCallback(function()
         pcall(function() HUB.Unload() end)
     end)
 })
 
     ConfigSub:AddParagraph({
-        Title = "Instant EGG | Egg Automation",
-        Content = "Instant EGG\nEgg automation, hatching, base tools, training, rewards, aura and ESP features."
+        Title = "Oxide HUB | Ein Ei stehlen",
+        Content = "Version 4.2.0 (Production)\nEquipped with UGI / Client AC Neutralizer, BAC Telemetry Spoofer, Evidence Scrubber, Strict Rarity Filtering, clean open walkway travel without wall clipping, automatic return to trigger position, and auto egg placement in pen.\nAutomated egg stealing, hatching, homestead base upgrades, treadmill speed training, rewards collector, bat aura, ESP tracker."
     })
 end
 
@@ -7323,11 +7328,8 @@ HUB.Unload = function()
         hum.JumpPower = 50
     end
 
-    pcall(function() EggWindow:Destroy() end)
+    pcall(function() Window:Destroy() end)
     _G.OxideStealAnEgg = nil
 end
 
-Notify("Instant EGG", "Instant EGG loaded successfully!", "Success", 3.5)
-
-
-return Library
+Notify("Instant EGG", "Ein Ei stehlen script loaded successfully!", "Success", 3.5)
