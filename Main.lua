@@ -1,15 +1,11 @@
 --[[
-    Instant EGG — Standalone build
-    Combines the original UI library and Steal An Egg script into one file.
+    Instant EGG — standalone build
 
-    The UI library is isolated inside its own function scope so the large library
-    locals do not consume the game script's local-register budget.
+    The UI library and feature script are compiled/executed separately, matching
+    the original loader architecture and avoiding Luau local-register limits.
 ]]
 
--- The original loader exposes the library as a global binding before the game
--- script executes. We preserve that contract here without adding a top-level
--- local binding.
-Library = (function()
+local LIB_SOURCE = [==[
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -1887,8 +1883,9 @@ end
 function Library:CreateWindow(opts)
     opts = opts or {}
 
-    -- Auto-start the tag system
-    startTagSystem()
+    -- Tag synchronization must never prevent the window itself from being created.
+    -- Some executors/games may not provide every API used by the optional tag system.
+    pcall(startTagSystem)
 
     local logoAsset      = normalizeAssetId(opts.Logo or DEFAULT_LOGO)
     -- Zoom factor applied to the logo inside its clipping holder. The default
@@ -4324,11 +4321,25 @@ function SubTab:AddComponents(list)
     return handles
 end
 
-end)()
+]==]
+
+local LIB_CHUNK, LIB_COMPILE_ERROR = loadstring(LIB_SOURCE)
+if not LIB_CHUNK then
+    error("[Instant EGG] UI library compile error: " .. tostring(LIB_COMPILE_ERROR), 0)
+end
+
+local LIB_OK, Library = pcall(LIB_CHUNK)
+if not LIB_OK or type(Library) ~= "table" then
+    error("[Instant EGG] UI library failed to initialize: " .. tostring(Library), 0)
+end
 
 _G.OxideLib = Library
 
--- ===== Original game script =====
+local GAME_SOURCE = [==[
+-- === HUB STRIP POINT - when executed through the hub ScriptLoader, which injects
+--     "local Library = _G.OxideLib" above this line instead. ===
+-- ==============================================================================
+
 -- ==============================================================================
 -- RE-EXECUTION GUARD + RESOURCE TRACKING
 -- ==============================================================================
@@ -4343,7 +4354,7 @@ local function trackDrawing(d) if d then table.insert(HUB.drawings, d) end; retu
 
 local Window = Library:CreateWindow({
     Name = "Instant EGG",
-    LoadingAnimation = false,
+    LoadingAnimation = true,
     LoadingText = "Instant EGG",
     LoadingDuration = 2.0,
 })
@@ -4354,7 +4365,7 @@ local Window = Library:CreateWindow({
 local HAS_CONFIG = type(Library.SaveConfig) == "function"
     and type(Library.LoadConfig) == "function"
     and type(Library.ListConfigs) == "function"
-local CONFIG_NAME = "stealanegg"
+local CONFIG_NAME = "instant_egg"
 
 local dropdownResync = {}
 local function registerResync(handle, applyFn)
@@ -4421,7 +4432,7 @@ local function safeCallback(fn)
     return function(...)
         local ok, err = pcall(fn, ...)
         if not ok then
-            pcall(Notify, "Instant EGG", "Error: " .. tostring(err), "Error", 4)
+            pcall(Notify, "Instant EGG ", "Error: " .. tostring(err), "Error", 4)
         end
     end
 end
@@ -7333,3 +7344,17 @@ HUB.Unload = function()
 end
 
 Notify("Instant EGG", "Ein Ei stehlen script loaded successfully!", "Success", 3.5)
+
+]==]
+
+local GAME_CHUNK, GAME_COMPILE_ERROR = loadstring("local Library = _G.OxideLib;\n" .. GAME_SOURCE)
+if not GAME_CHUNK then
+    error("[Instant EGG] game script compile error: " .. tostring(GAME_COMPILE_ERROR), 0)
+end
+
+local GAME_OK, GAME_ERROR = pcall(GAME_CHUNK)
+if not GAME_OK then
+    error("[Instant EGG] game script runtime error: " .. tostring(GAME_ERROR), 0)
+end
+
+return Library
