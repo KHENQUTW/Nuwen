@@ -2312,7 +2312,7 @@ function Library:CreateWindow(opts)
         AutomaticSize = Enum.AutomaticSize.X,
         BackgroundColor3 = C.HotbarBg,
         ClipsDescendants = false,
-        Visible = (not loadingEnabled) and not (opts.DrawerMenu == true),
+        Visible = not loadingEnabled,
         ZIndex = 3, Parent = container,
     })
     corner(hotbar, 11)
@@ -4668,7 +4668,7 @@ local function scanRemotes()
     end
 end
 
-scanRemotes()
+pcall(scanRemotes)
 
 local function parseCounter(v)
     if type(v) ~= "string" then return end
@@ -4777,37 +4777,39 @@ end
 local HookFn = hookfunction or replaceclosure or hookfunc or detour_function
 
 if anyRemote and HookFn then
-    local oldFire
-    oldFire = HookFn(anyRemote.FireServer, function(self, ...)
-        local args = table.pack(...)
-        if not remoteSet[self] then
-            return oldFire(self, unpack(args, 1, args.n))
-        end
-
-        local a1 = args[1]
-
-        if type(a1) == "string" and #a1 == 12 then
-            if not model then
-                model = learn(self, a1, args[2])
-            else
-                local c = parseCounter(rawget(model.state, model.map.marker))
-                if c and encode(model, c) ~= a1 then
-                    local m = learn(self, a1, args[2])
-                    if m then m.spoofed = model.spoofed; model = m end
-                end
+    pcall(function()
+        local oldFire
+        oldFire = HookFn(anyRemote.FireServer, function(self, ...)
+            local args = table.pack(...)
+            if not remoteSet[self] then
+                return oldFire(self, unpack(args, 1, args.n))
             end
+
+            local a1 = args[1]
+
+            if type(a1) == "string" and #a1 == 12 then
+                if not model then
+                    model = learn(self, a1, args[2])
+                else
+                    local c = parseCounter(rawget(model.state, model.map.marker))
+                    if c and encode(model, c) ~= a1 then
+                        local m = learn(self, a1, args[2])
+                        if m then m.spoofed = model.spoofed; model = m end
+                    end
+                end
+                return oldFire(self, unpack(args, 1, args.n))
+            end
+
+            if model and type(a1) == "string" and #a1 == 4 then
+                local c = liveCounter(model)
+                args[1] = encode(model, c)
+                args[2] = refreshArg2(model)
+                model.spoofed = (model.spoofed or 0) + 1
+                return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
+            end
+
             return oldFire(self, unpack(args, 1, args.n))
-        end
-
-        if model and type(a1) == "string" and #a1 == 4 then
-            local c = liveCounter(model)
-            args[1] = encode(model, c)
-            args[2] = refreshArg2(model)
-            model.spoofed = (model.spoofed or 0) + 1
-            return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
-        end
-
-        return oldFire(self, unpack(args, 1, args.n))
+        end)
     end)
 end
 
