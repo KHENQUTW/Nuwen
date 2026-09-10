@@ -1,12 +1,12 @@
--- Instant EGG - Best Value Scanner
--- Rebuilt from the working minimal UI structure.
--- This version keeps the original Window/Minimize behavior and adds
--- a self-contained best-value egg scanner inside the existing Body.
+-- WCC Cheater - Feature Drawer UI
+-- UI-only refactor of the supplied Main(3).lua.
+-- The feature switches below only manage local UI state; game automation,
+-- teleportation, combat abuse, and anti-detection code are intentionally
+-- not wired into this version.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 if not player then
@@ -15,192 +15,664 @@ end
 
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Remove an older copy if it exists.
-local old = playerGui:FindFirstChild("InstantEgg)
-if old then
-    old:Destroy()
+local OLD_NAMES = {
+    "WCC Cheater",
+    "WCCCheater",
+    "WCC Nigga",
+    "Instant EGG",
+}
+
+for _, name in ipairs(OLD_NAMES) do
+    local old = playerGui:FindFirstChild(name)
+    if old then
+        old:Destroy()
+    end
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "InstantEGG"
-gui.IgnoreGuiInset = true
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 999999999
-gui.Parent = playerGui
+-- ============================================================================
+-- STATE
+-- ============================================================================
 
--- Main Window
-local window = Instance.new("Frame")
-window.Name = "Window"
-window.AnchorPoint = Vector2.new(0.5, 0.5)
-window.Position = UDim2.fromScale(0.5, 0.5)
-window.Size = UDim2.fromOffset(420, 250)
-window.BackgroundColor3 = Color3.fromRGB(20, 22, 30)
-window.BackgroundTransparency = 0.04
-window.BorderSizePixel = 0
-window.ClipsDescendants = true
-window.Parent = gui
+local state = {
+    Fullbright = false,
+    ["Bat / Slap Aura"] = false,
+    ["Auto Sell"] = false,
+    ["Player Movement"] = false,
+    ["Area Teleport"] = false,
+    ["Plot Teleport"] = false,
+    ["Player Teleport"] = false,
+    ["Auto Hatch"] = false,
+    ["Auto Plant"] = false,
+    ["Auto Steal"] = false,
+}
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 14)
-corner.Parent = window
+local featureOrder = {
+    "Fullbright",
+    "Bat / Slap Aura",
+    "Auto Sell",
+    "Player Movement",
+    "Area Teleport",
+    "Plot Teleport",
+    "Player Teleport",
+    "Auto Hatch",
+    "Auto Plant",
+    "Auto Steal",
+}
 
-local stroke = Instance.new("UIStroke")
-stroke.Thickness = 1
-stroke.Transparency = 0.35
-stroke.Color = Color3.fromRGB(110, 115, 135)
-stroke.Parent = window
+local featureIcons = {
+    ["Fullbright"] = "☀",
+    ["Bat / Slap Aura"] = "⚔",
+    ["Auto Sell"] = "$",
+    ["Player Movement"] = "⌁",
+    ["Area Teleport"] = "⌖",
+    ["Plot Teleport"] = "□",
+    ["Player Teleport"] = "♙",
+    ["Auto Hatch"] = "◉",
+    ["Auto Plant"] = "✿",
+    ["Auto Steal"] = "★",
+}
+
+-- ============================================================================
+-- HELPERS
+-- ============================================================================
+
+local function new(className, props, parent)
+    local obj = Instance.new(className)
+    for key, value in pairs(props or {}) do
+        obj[key] = value
+    end
+    obj.Parent = parent
+    return obj
+end
+
+local function addCorner(parent, radius)
+    return new("UICorner", {
+        CornerRadius = UDim.new(0, radius),
+    }, parent)
+end
+
+local function addStroke(parent, transparency)
+    return new("UIStroke", {
+        Thickness = 1,
+        Transparency = transparency or 0.5,
+        Color = Color3.fromRGB(110, 115, 130),
+    }, parent)
+end
+
+local function tween(obj, duration, props)
+    local ok, result = pcall(function()
+        return TweenService:Create(
+            obj,
+            TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+            props
+        )
+    end)
+    if ok and result then
+        result:Play()
+    end
+end
+
+-- ============================================================================
+-- ROOT GUI
+-- ============================================================================
+
+local gui = new("ScreenGui", {
+    Name = "WCC Cheater",
+    IgnoreGuiInset = true,
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    DisplayOrder = 999999999,
+}, playerGui)
+
+-- Soft backdrop
+local backdrop = new("Frame", {
+    Name = "Backdrop",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(8, 10, 14),
+    BackgroundTransparency = 0.25,
+    BorderSizePixel = 0,
+}, gui)
+
+-- ============================================================================
+-- MAIN WINDOW
+-- ============================================================================
+
+local window = new("Frame", {
+    Name = "Window",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.fromScale(0.5, 0.5),
+    Size = UDim2.fromOffset(700, 430),
+    BackgroundColor3 = Color3.fromRGB(20, 22, 29),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, gui)
+addCorner(window, 18)
+addStroke(window, 0.3)
 
 -- Header
-local header = Instance.new("Frame")
-header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 44)
-header.BackgroundColor3 = Color3.fromRGB(28, 30, 40)
-header.BorderSizePixel = 0
-header.Parent = window
+local header = new("Frame", {
+    Name = "Header",
+    Size = UDim2.new(1, 0, 0, 52),
+    BackgroundColor3 = Color3.fromRGB(27, 30, 39),
+    BorderSizePixel = 0,
+}, window)
+addCorner(header, 18)
 
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 14)
-headerCorner.Parent = header
+new("Frame", {
+    Name = "HeaderMask",
+    Position = UDim2.new(0, 0, 1, -18),
+    Size = UDim2.new(1, 0, 0, 18),
+    BackgroundColor3 = header.BackgroundColor3,
+    BorderSizePixel = 0,
+}, header)
 
-local headerMask = Instance.new("Frame")
-headerMask.Name = "HeaderMask"
-headerMask.Position = UDim2.new(0, 0, 1, -14)
-headerMask.Size = UDim2.new(1, 0, 0, 14)
-headerMask.BackgroundColor3 = header.BackgroundColor3
-headerMask.BorderSizePixel = 0
-headerMask.Parent = header
+local title = new("TextLabel", {
+    Name = "Title",
+    Position = UDim2.fromOffset(18, 0),
+    Size = UDim2.new(0, 300, 1, 0),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamSemibold,
+    Text = "WCC Cheater",
+    TextColor3 = Color3.fromRGB(245, 247, 252),
+    TextSize = 16,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
 
-local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.BackgroundTransparency = 1
-title.Position = UDim2.fromOffset(16, 0)
-title.Size = UDim2.new(1, -66, 1, 0)
-title.Font = Enum.Font.GothamMedium
-title.Text = "WCC Nigga"
-title.TextColor3 = Color3.fromRGB(245, 246, 250)
-title.TextSize = 15
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = header
+local subtitle = new("TextLabel", {
+    Name = "Subtitle",
+    Position = UDim2.fromOffset(18, 26),
+    Size = UDim2.new(0, 360, 0, 18),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "Feature drawer",
+    TextColor3 = Color3.fromRGB(145, 150, 162),
+    TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
 
--- Minimize button only
-local minimize = Instance.new("TextButton")
-minimize.Name = "Minimize"
-minimize.AnchorPoint = Vector2.new(1, 0.5)
-minimize.Position = UDim2.new(1, -10, 0.5, 0)
-minimize.Size = UDim2.fromOffset(28, 28)
-minimize.BackgroundColor3 = Color3.fromRGB(42, 44, 56)
-minimize.AutoButtonColor = false
-minimize.Text = "−"
-minimize.TextColor3 = Color3.fromRGB(235, 237, 242)
-minimize.TextSize = 20
-minimize.Font = Enum.Font.GothamMedium
-minimize.Parent = header
+local minimize = new("TextButton", {
+    Name = "Minimize",
+    AnchorPoint = Vector2.new(1, 0.5),
+    Position = UDim2.new(1, -12, 0.5, 0),
+    Size = UDim2.fromOffset(30, 30),
+    BackgroundColor3 = Color3.fromRGB(42, 45, 56),
+    AutoButtonColor = false,
+    Font = Enum.Font.GothamMedium,
+    Text = "−",
+    TextColor3 = Color3.fromRGB(235, 238, 245),
+    TextSize = 20,
+}, header)
+addCorner(minimize, 9)
 
-local minCorner = Instance.new("UICorner")
-minCorner.CornerRadius = UDim.new(0, 8)
-minCorner.Parent = minimize
+-- ============================================================================
+-- BODY / DRAWER
+-- ============================================================================
 
--- Body
-local body = Instance.new("Frame")
-body.Name = "Body"
-body.Position = UDim2.fromOffset(0, 44)
-body.Size = UDim2.new(1, 0, 1, -44)
-body.BackgroundTransparency = 1
-body.BorderSizePixel = 0
-body.Parent = window
+local body = new("Frame", {
+    Name = "Body",
+    Position = UDim2.fromOffset(0, 52),
+    Size = UDim2.new(1, 0, 1, -52),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+}, window)
 
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 12)
-padding.PaddingBottom = UDim.new(0, 12)
-padding.PaddingLeft = UDim.new(0, 14)
-padding.PaddingRight = UDim.new(0, 14)
-padding.Parent = body
+local rail = new("Frame", {
+    Name = "Rail",
+    Position = UDim2.fromOffset(10, 10),
+    Size = UDim2.new(0, 54, 1, -20),
+    BackgroundColor3 = Color3.fromRGB(27, 30, 39),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, body)
+addCorner(rail, 14)
+addStroke(rail, 0.6)
 
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 8)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Parent = body
+local drawer = new("Frame", {
+    Name = "Drawer",
+    Position = UDim2.fromOffset(74, 10),
+    Size = UDim2.new(0, 205, 1, -20),
+    BackgroundColor3 = Color3.fromRGB(27, 30, 39),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, body)
+addCorner(drawer, 14)
+addStroke(drawer, 0.6)
 
-local function makeLabel(name, text, height, size)
-    local label = Instance.new("TextLabel")
-    label.Name = name
-    label.Size = UDim2.new(1, 0, 0, height)
-    label.BackgroundTransparency = 1
-    label.Font = Enum.Font.Gotham
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(225, 227, 234)
-    label.TextSize = size or 13
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.TextYAlignment = Enum.TextYAlignment.Center
-    label.TextTruncate = Enum.TextTruncate.AtEnd
-    label.LayoutOrder = 1
-    label.Parent = body
-    return label
+local content = new("Frame", {
+    Name = "Content",
+    Position = UDim2.fromOffset(291, 10),
+    Size = UDim2.new(1, -301, 1, -20),
+    BackgroundColor3 = Color3.fromRGB(24, 27, 35),
+    BorderSizePixel = 0,
+    ClipsDescendants = true,
+}, body)
+addCorner(content, 14)
+addStroke(content, 0.6)
+
+-- Drawer title
+new("TextLabel", {
+    Name = "DrawerTitle",
+    Position = UDim2.fromOffset(16, 14),
+    Size = UDim2.new(1, -32, 0, 28),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamSemibold,
+    Text = "Features",
+    TextColor3 = Color3.fromRGB(242, 244, 249),
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, drawer)
+
+local drawerScroll = new("ScrollingFrame", {
+    Name = "FeatureList",
+    Position = UDim2.fromOffset(8, 52),
+    Size = UDim2.new(1, -16, 1, -60),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 3,
+    ScrollBarImageTransparency = 0.5,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    CanvasSize = UDim2.new(),
+}, drawer)
+
+new("UIListLayout", {
+    Padding = UDim.new(0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, drawerScroll)
+
+-- Rail menu toggle
+local railMenu = new("TextButton", {
+    Name = "Menu",
+    Position = UDim2.fromOffset(7, 10),
+    Size = UDim2.fromOffset(40, 40),
+    BackgroundColor3 = Color3.fromRGB(37, 40, 50),
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Font = Enum.Font.GothamMedium,
+    Text = "☰",
+    TextColor3 = Color3.fromRGB(235, 239, 246),
+    TextSize = 18,
+}, rail)
+addCorner(railMenu, 10)
+
+local railHint = new("TextLabel", {
+    Name = "Hint",
+    Position = UDim2.fromOffset(0, 58),
+    Size = UDim2.new(1, 0, 0, 40),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "MENU",
+    TextColor3 = Color3.fromRGB(115, 120, 133),
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Center,
+}, rail)
+
+-- ============================================================================
+-- CONTENT HEADER
+-- ============================================================================
+
+local contentTitle = new("TextLabel", {
+    Name = "ContentTitle",
+    Position = UDim2.fromOffset(20, 18),
+    Size = UDim2.new(1, -40, 0, 28),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamSemibold,
+    Text = "Fullbright",
+    TextColor3 = Color3.fromRGB(243, 245, 250),
+    TextSize = 17,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, content)
+
+local contentDescription = new("TextLabel", {
+    Name = "ContentDescription",
+    Position = UDim2.fromOffset(20, 47),
+    Size = UDim2.new(1, -40, 0, 44),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "Local toggle state for the selected feature.",
+    TextColor3 = Color3.fromRGB(150, 155, 168),
+    TextSize = 11,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+}, content)
+
+local divider = new("Frame", {
+    Name = "Divider",
+    Position = UDim2.fromOffset(20, 98),
+    Size = UDim2.new(1, -40, 0, 1),
+    BackgroundColor3 = Color3.fromRGB(48, 52, 64),
+    BorderSizePixel = 0,
+}, content)
+
+local featureCard = new("Frame", {
+    Name = "FeatureCard",
+    Position = UDim2.fromOffset(20, 118),
+    Size = UDim2.new(1, -40, 0, 82),
+    BackgroundColor3 = Color3.fromRGB(29, 32, 42),
+    BorderSizePixel = 0,
+}, content)
+addCorner(featureCard, 14)
+addStroke(featureCard, 0.75)
+
+local featureCardIcon = new("TextLabel", {
+    Name = "Icon",
+    Position = UDim2.fromOffset(16, 14),
+    Size = UDim2.fromOffset(46, 46),
+    BackgroundColor3 = Color3.fromRGB(37, 40, 51),
+    Font = Enum.Font.GothamMedium,
+    Text = "☀",
+    TextColor3 = Color3.fromRGB(239, 242, 248),
+    TextSize = 20,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    TextYAlignment = Enum.TextYAlignment.Center,
+}, featureCard)
+addCorner(featureCardIcon, 12)
+
+local featureCardName = new("TextLabel", {
+    Name = "Name",
+    Position = UDim2.fromOffset(76, 13),
+    Size = UDim2.new(1, -190, 0, 24),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.GothamMedium,
+    Text = "Fullbright",
+    TextColor3 = Color3.fromRGB(238, 241, 247),
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, featureCard)
+
+local featureStateText = new("TextLabel", {
+    Name = "StateText",
+    Position = UDim2.fromOffset(76, 39),
+    Size = UDim2.new(1, -190, 0, 20),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "OFF",
+    TextColor3 = Color3.fromRGB(128, 133, 146),
+    TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, featureCard)
+
+local featureToggle = new("TextButton", {
+    Name = "Toggle",
+    AnchorPoint = Vector2.new(1, 0.5),
+    Position = UDim2.new(1, -16, 0.5, 0),
+    Size = UDim2.fromOffset(54, 30),
+    BackgroundColor3 = Color3.fromRGB(46, 49, 60),
+    AutoButtonColor = false,
+    Text = "",
+}, featureCard)
+addCorner(featureToggle, 15)
+
+local toggleKnob = new("Frame", {
+    Name = "Knob",
+    Position = UDim2.fromOffset(4, 4),
+    Size = UDim2.fromOffset(22, 22),
+    BackgroundColor3 = Color3.fromRGB(220, 223, 230),
+    BorderSizePixel = 0,
+}, featureToggle)
+addCorner(toggleKnob, 11)
+
+local notice = new("TextLabel", {
+    Name = "Notice",
+    Position = UDim2.fromOffset(20, 218),
+    Size = UDim2.new(1, -40, 0, 70),
+    BackgroundTransparency = 1,
+    Font = Enum.Font.Gotham,
+    Text = "Select a feature from the drawer to change its local UI state.",
+    TextColor3 = Color3.fromRGB(133, 138, 151),
+    TextSize = 11,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+}, content)
+
+-- ============================================================================
+-- FEATURE BUTTONS
+-- ============================================================================
+
+local selectedFeature = featureOrder[1]
+local drawerButtons = {}
+
+local function setFeatureVisual(name, enabled, button, active)
+    if active then
+        button.BackgroundColor3 = Color3.fromRGB(54, 58, 72)
+        button.TextColor3 = Color3.fromRGB(245, 247, 252)
+    else
+        button.BackgroundColor3 = Color3.fromRGB(35, 38, 48)
+        button.TextColor3 = Color3.fromRGB(196, 200, 209)
+    end
+
+    local stateDot = button:FindFirstChild("State")
+    if stateDot then
+        stateDot.BackgroundColor3 = enabled
+            and Color3.fromRGB(70, 190, 120)
+            or Color3.fromRGB(80, 84, 96)
+    end
 end
 
-local status = makeLabel("Status", "Status: OFF", 24, 13)
-status.TextColor3 = Color3.fromRGB(180, 183, 192)
+local function updateMainToggle(enabled)
+    if enabled then
+        featureToggle.BackgroundColor3 = Color3.fromRGB(52, 110, 84)
+        tween(toggleKnob, 0.14, {
+            Position = UDim2.fromOffset(28, 4),
+            BackgroundColor3 = Color3.fromRGB(245, 248, 252),
+        })
+        featureStateText.Text = "ON"
+        featureStateText.TextColor3 = Color3.fromRGB(102, 202, 145)
+    else
+        featureToggle.BackgroundColor3 = Color3.fromRGB(46, 49, 60)
+        tween(toggleKnob, 0.14, {
+            Position = UDim2.fromOffset(4, 4),
+            BackgroundColor3 = Color3.fromRGB(220, 223, 230),
+        })
+        featureStateText.Text = "OFF"
+        featureStateText.TextColor3 = Color3.fromRGB(128, 133, 146)
+    end
+end
 
-local target = makeLabel("Target", "Target: None", 24, 14)
-target.LayoutOrder = 2
+local descriptions = {
+    ["Fullbright"] = "Visual feature entry.",
+    ["Bat / Slap Aura"] = "Combat feature entry.",
+    ["Auto Sell"] = "Sales feature entry.",
+    ["Player Movement"] = "Movement feature entry.",
+    ["Area Teleport"] = "Travel feature entry.",
+    ["Plot Teleport"] = "Plot travel feature entry.",
+    ["Player Teleport"] = "Player travel feature entry.",
+    ["Auto Hatch"] = "Egg hatching feature entry.",
+    ["Auto Plant"] = "Egg planting feature entry.",
+    ["Auto Steal"] = "Egg stealing feature entry.",
+}
 
-local details = makeLabel("Details", "Rarity: —   Score: —   Area: —", 24, 12)
-details.LayoutOrder = 3
-details.TextColor3 = Color3.fromRGB(190, 193, 203)
+local function selectFeature(name)
+    selectedFeature = name
+    contentTitle.Text = name
+    contentDescription.Text = descriptions[name] or "Feature entry."
+    featureCardName.Text = name
+    featureCardIcon.Text = featureIcons[name] or "•"
+    notice.Text = "Selected: " .. name .. "\nToggle state is stored locally by this UI."
+    updateMainToggle(state[name])
 
-local toggle = Instance.new("TextButton")
-toggle.Name = "BestEggToggle"
-toggle.Size = UDim2.new(1, 0, 0, 40)
-toggle.BackgroundColor3 = Color3.fromRGB(42, 44, 56)
-toggle.BorderSizePixel = 0
-toggle.AutoButtonColor = false
-toggle.Font = Enum.Font.GothamMedium
-toggle.Text = "Best Egg Scanner: OFF"
-toggle.TextColor3 = Color3.fromRGB(240, 241, 246)
-toggle.TextSize = 13
-toggle.LayoutOrder = 4
-toggle.Parent = body
+    for featureName, button in pairs(drawerButtons) do
+        setFeatureVisual(
+            featureName,
+            state[featureName] == true,
+            button,
+            featureName == selectedFeature
+        )
+    end
+end
 
-local toggleCorner = Instance.new("UICorner")
-toggleCorner.CornerRadius = UDim.new(0, 10)
-toggleCorner.Parent = toggle
+for index, name in ipairs(featureOrder) do
+    local button = new("TextButton", {
+        Name = name:gsub("%W", ""),
+        Size = UDim2.new(1, 0, 0, 38),
+        BackgroundColor3 = Color3.fromRGB(35, 38, 48),
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        Font = Enum.Font.Gotham,
+        Text = "",
+        LayoutOrder = index,
+    }, drawerScroll)
+    addCorner(button, 10)
 
-local scan = Instance.new("TextButton")
-scan.Name = "ScanNow"
-scan.Size = UDim2.new(1, 0, 0, 36)
-scan.BackgroundColor3 = Color3.fromRGB(34, 36, 47)
-scan.BorderSizePixel = 0
-scan.AutoButtonColor = false
-scan.Font = Enum.Font.Gotham
-scan.Text = "Scan Best Egg Now"
-scan.TextColor3 = Color3.fromRGB(220, 222, 230)
-scan.TextSize = 12
-scan.LayoutOrder = 5
-scan.Parent = body
+    local icon = new("TextLabel", {
+        Position = UDim2.fromOffset(10, 0),
+        Size = UDim2.fromOffset(24, 38),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamMedium,
+        Text = featureIcons[name] or "•",
+        TextColor3 = Color3.fromRGB(197, 201, 210),
+        TextSize = 15,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center,
+    }, button)
 
-local scanCorner = Instance.new("UICorner")
-scanCorner.CornerRadius = UDim.new(0, 10)
-scanCorner.Parent = scan
+    new("TextLabel", {
+        Position = UDim2.fromOffset(42, 0),
+        Size = UDim2.new(1, -72, 1, 0),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.Gotham,
+        Text = name,
+        TextColor3 = Color3.fromRGB(210, 213, 221),
+        TextSize = 11,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Center,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+    }, button)
 
-local hint = makeLabel("Hint", "Provider: _G.GetEggSnapshot()", 20, 10)
-hint.LayoutOrder = 6
-hint.TextColor3 = Color3.fromRGB(135, 138, 148)
+    local stateDot = new("Frame", {
+        Name = "State",
+        AnchorPoint = Vector2.new(1, 0.5),
+        Position = UDim2.new(1, -9, 0.5, 0),
+        Size = UDim2.fromOffset(7, 7),
+        BackgroundColor3 = Color3.fromRGB(80, 84, 96),
+        BorderSizePixel = 0,
+    }, button)
+    addCorner(stateDot, 4)
 
--- Dragging (same behavior as the working UI)
+    drawerButtons[name] = button
+
+    button.MouseEnter:Connect(function()
+        if selectedFeature ~= name then
+            tween(button, 0.1, {
+                BackgroundColor3 = Color3.fromRGB(42, 45, 56),
+            })
+        end
+    end)
+
+    button.MouseLeave:Connect(function()
+        setFeatureVisual(
+            name,
+            state[name] == true,
+            button,
+            selectedFeature == name
+        )
+    end)
+
+    button.MouseButton1Click:Connect(function()
+        selectFeature(name)
+    end)
+end
+
+selectFeature(selectedFeature)
+
+-- ============================================================================
+-- TOGGLE HANDLING
+-- ============================================================================
+
+local function setFeatureState(name, enabled)
+    state[name] = enabled == true
+    if name == selectedFeature then
+        updateMainToggle(state[name])
+    end
+
+    local button = drawerButtons[name]
+    if button then
+        setFeatureVisual(name, state[name], button, name == selectedFeature)
+    end
+end
+
+featureToggle.MouseButton1Click:Connect(function()
+    setFeatureState(selectedFeature, not state[selectedFeature])
+end)
+
+-- ============================================================================
+-- DRAWER OPEN/CLOSE
+-- ============================================================================
+
+local drawerOpen = true
+local openDrawerSize = UDim2.fromOffset(205, body.AbsoluteSize.Y - 20)
+local closedDrawerSize = UDim2.fromOffset(0, body.AbsoluteSize.Y - 20)
+
+local function setDrawer(open)
+    drawerOpen = open
+    railMenu.Text = open and "☰" or "›"
+
+    if open then
+        tween(drawer, 0.2, {Size = openDrawerSize})
+        tween(content, 0.2, {
+            Position = UDim2.fromOffset(291, 10),
+            Size = UDim2.new(1, -301, 1, -20),
+        })
+    else
+        tween(drawer, 0.2, {Size = closedDrawerSize})
+        tween(content, 0.2, {
+            Position = UDim2.fromOffset(74, 10),
+            Size = UDim2.new(1, -84, 1, -20),
+        })
+    end
+end
+
+railMenu.MouseButton1Click:Connect(function()
+    setDrawer(not drawerOpen)
+end)
+
+-- Recalculate sizes whenever the body changes.
+body:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+    local h = math.max(body.AbsoluteSize.Y - 20, 0)
+    openDrawerSize = UDim2.fromOffset(205, h)
+    closedDrawerSize = UDim2.fromOffset(0, h)
+    if drawerOpen then
+        drawer.Size = openDrawerSize
+    end
+end)
+
+-- ============================================================================
+-- DRAGGING
+-- ============================================================================
+
 local dragging = false
+local dragInput
 local dragStart
 local startPosition
+
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    window.Position = UDim2.new(
+        startPosition.X.Scale,
+        startPosition.X.Offset + delta.X,
+        startPosition.Y.Scale,
+        startPosition.Y.Offset + delta.Y
+    )
+end
 
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+
         dragging = true
         dragStart = input.Position
         startPosition = window.Position
+        dragInput = input
 
-        input.Changed:Connect(function()
+        local connection
+        connection = input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then
                 dragging = false
+                dragInput = nil
+                if connection then
+                    connection:Disconnect()
+                end
             end
         end)
     end
@@ -213,34 +685,27 @@ UserInputService.InputChanged:Connect(function(input)
 
     if input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch then
-        local delta = input.Position - dragStart
-        window.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
+        updateDrag(input)
     end
 end)
 
--- Minimize / restore
+-- ============================================================================
+-- MINIMIZE / RESTORE
+-- ============================================================================
+
 local minimized = false
 local normalSize = window.Size
 
 minimize.MouseEnter:Connect(function()
-    TweenService:Create(
-        minimize,
-        TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {BackgroundColor3 = Color3.fromRGB(58, 60, 74)}
-    ):Play()
+    tween(minimize, 0.1, {
+        BackgroundColor3 = Color3.fromRGB(58, 61, 74),
+    })
 end)
 
 minimize.MouseLeave:Connect(function()
-    TweenService:Create(
-        minimize,
-        TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {BackgroundColor3 = Color3.fromRGB(42, 44, 56)}
-    ):Play()
+    tween(minimize, 0.1, {
+        BackgroundColor3 = Color3.fromRGB(42, 45, 56),
+    })
 end)
 
 minimize.MouseButton1Click:Connect(function()
@@ -249,415 +714,42 @@ minimize.MouseButton1Click:Connect(function()
     if minimized then
         minimize.Text = "+"
         body.Visible = false
-
-        TweenService:Create(
-            window,
-            TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-            {Size = UDim2.fromOffset(normalSize.X.Offset, 44)}
-        ):Play()
+        tween(window, 0.2, {
+            Size = UDim2.fromOffset(normalSize.X.Offset, 52),
+        })
     else
         minimize.Text = "−"
         body.Visible = true
-
-        TweenService:Create(
-            window,
-            TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-            {Size = normalSize}
-        ):Play()
+        tween(window, 0.2, {
+            Size = normalSize,
+        })
     end
 end)
 
--- ==============================================================================
--- CLIENT AC NEUTRALIZER & UGI CONSTANT WIPER (Layer 1 + Layer 2)
--- ==============================================================================
-local function bypassClientDetections()
-    if typeof(filtergc) ~= "function" or typeof(debug) ~= "table" or typeof(debug.getupvalues) ~= "function" then
-        return false, "no filtergc"
-    end
-    local ok, fn = pcall(function()
-        return filtergc("function", {
-            Constants = { "gmatch", "GetFullName" },
-        }, true)
-    end)
-    if not ok or type(fn) ~= "function" then
-        return false, "filter miss"
-    end
-    local setMeta = (typeof(setrawmetatable) == "function" and setrawmetatable)
-        or (typeof(setmetatable) == "function" and setmetatable)
-    if not setMeta then
-        return false, "no setmeta"
-    end
-    local blocked = 0
-    local okUv, ups = pcall(debug.getupvalues, fn)
-    if not okUv or type(ups) ~= "table" then
-        return false, "no upvalues"
-    end
-    for _, tbl in pairs(ups) do
-        if typeof(tbl) == "table" then
-            local okSet = pcall(setMeta, tbl, {
-                __newindex = function() end,
-            })
-            if okSet then
-                blocked = blocked + 1
-            end
-        end
-    end
-    return blocked > 0, blocked
-end
+-- ============================================================================
+-- KEYBIND
+-- ============================================================================
 
-pcall(bypassClientDetections)
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then
+        return
+    end
 
--- Runtime AC Detection Table Freezer (Neutralizes violation storage)
-pcall(function()
-    local getgc = getgc or (debug and debug.getgc)
-    local setmeta = setrawmetatable or setmetatable
-    local getmeta = getrawmetatable or getmetatable
-
-    if getgc and setmeta then
-        for _, obj in ipairs(getgc(true)) do
-            if typeof(obj) == "table" and not (getmeta and getmeta(obj)) then
-                local mainrun = false
-                for _, v in pairs(obj) do
-                    if v == obj then
-                        mainrun = true
-                        break
-                    end
-                end
-                if mainrun then
-                    for _, v in pairs(obj) do
-                        if typeof(v) == "number" and v >= 1 and v <= 3 and obj[v] == nil then
-                            pcall(setmeta, obj, { __newindex = function() end })
-                            break
-                        end
-                    end
-                end
-            end
-        end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        gui.Enabled = not gui.Enabled
     end
 end)
 
--- UGI Constant Wiper (neutralizes ReplicatedFirst.UGI watchdog)
-pcall(function()
-    local getconstants = getconstants or (debug and debug.getconstants)
-    local setconstant = setconstant or (debug and debug.setconstant)
-    local islclosure = islclosure or function(Function)
-        return not pcall(setfenv, getfenv(Function))
-    end
-
-    if getgc and getconstants and setconstant then
-        for _, Function in ipairs(getgc(true)) do
-            if typeof(Function) == "function" and islclosure(Function) then
-                local ok, Source = pcall(debug.info, Function, "s")
-                if ok and type(Source) == "string" and Source:find("ReplicatedFirst", 1, true) and Source:find("UGI", 1, true) then
-                    local okC, Constants = pcall(getconstants, Function)
-                    if okC and type(Constants) == "table" then
-                        for Index, Constant in next, Constants do
-                            if type(Constant) == "string" and Constant == "Humanoid" then
-                                pcall(setconstant, Function, Index, "")
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Secondary Layer: X-14 Stack Scrubber & Token Neutralizer
-pcall(function()
-    local getconstants = getconstants or (debug and debug.getconstants)
-    local islclosure = islclosure or function(fn) return not pcall(setfenv, getfenv(fn)) end
-    local HookFn = hookfunction or replaceclosure or hookfunc
-    if getgc and getconstants and HookFn and debug and debug.getstack and debug.setstack then
-        for _, fn in ipairs(getgc(true)) do
-            if typeof(fn) == "function" and islclosure(fn) then
-                local ok, consts = pcall(getconstants, fn)
-                if ok and type(consts) == "table" and table.find(consts, "X-14") then
-                    local cb = nil
-                    cb = HookFn(fn, function(...)
-                        local stack = debug.getstack(1)
-                        if type(stack) == "table" then
-                            for idx, val in pairs(stack) do
-                                if val == "X-14" then
-                                    pcall(debug.setstack, 1, idx, nil)
-                                end
-                            end
-                        end
-                        if cb then return cb(...) end
-                    end)
-                end
-            end
-        end
-    end
-end)
-
--- Layer 3: Anti-Tamper State Table Sanitizer (19-upvalue detection neutralization)
-pcall(function()
-    local getgc = getgc or (debug and debug.getgc)
-    local islclosure = islclosure or function(v) return not pcall(setfenv, getfenv(v)) end
-    local getupvalues = getupvalues or (debug and debug.getupvalues)
-    local getupvalue = getupvalue or (debug and debug.getupvalue)
-    local setupvalue = setupvalue or (debug and debug.setupvalue)
-    local clonefunction = clonefunction or function(f) return function(...) return f(...) end end
-
-    if getgc and getupvalues and getupvalue and setupvalue then
-        for _, v in ipairs(getgc(true)) do
-            if typeof(v) == "function" and islclosure(v) then
-                local ok, upvs = pcall(getupvalues, v)
-                if ok and upvs and #upvs == 19 then
-                    local ok2, u2 = pcall(getupvalue, v, 2)
-                    if ok2 and typeof(u2) == "function" then
-                        local old = clonefunction(u2)
-                        pcall(setupvalue, v, 2, function(a, b)
-                            if b and typeof(b) == "table" then
-                                pcall(setmetatable, b, {})
-                            end
-                            return old(a, b)
-                        end)
-                    end
-                end
-            end
-        end
-    end
-end)
--- -----------------------------------------------------------------------------
--- Best-value egg scanner
--- Uses the game's exposed client EggState snapshot when available.
--- -----------------------------------------------------------------------------
-
-local EggState
-local RarityData
-local AssetsData
-local AreasData
-
-local function safeRequire(parent, name)
-    local obj = parent and parent:FindFirstChild(name)
-    if not obj then
-        return nil
-    end
-    local ok, result = pcall(require, obj)
-    return ok and result or nil
-end
-
-pcall(function()
-    local client = ReplicatedStorage:FindFirstChild("Client")
-    local data = ReplicatedStorage:FindFirstChild("Data")
-    EggState = safeRequire(client, "EggState")
-    RarityData = safeRequire(data, "Rarity")
-    AssetsData = safeRequire(data, "Assets")
-    AreasData = safeRequire(data, "Areas")
-end)
-
-local RARITY_SCORE = {
-    Titan = 1100, Divine = 1000, Transcendent = 1000, Superior = 1000,
-    Eternal = 900, Limited = 900, Secret = 800, Exotic = 800,
-    Cosmic = 700, Exclusive = 700, Admin = 700, Mythic = 600,
-    Mythical = 600, Prismatic = 600, Rainbow = 600, ["Squishy God"] = 600,
-    BrainrotGod = 600, Legendary = 500, Epic = 400, Rare = 300,
-    SuperRare = 200, Celestial = 200, Uncommon = 200, Basic = 100, Common = 100,
+-- Public UI state handle.
+_G.WCCCheaterUI = {
+    Gui = gui,
+    Window = window,
+    State = state,
+    SelectFeature = selectFeature,
+    SetFeatureState = setFeatureState,
+    ToggleDrawer = function()
+        setDrawer(not drawerOpen)
+    end,
 }
 
-local function resolveRarity(record)
-    if type(record) ~= "table" then
-        return "Common", 100
-    end
-
-    if record.Rarity ~= nil then
-        local r = record.Rarity
-        local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
-        name = tostring(name or "Common")
-        local score = RARITY_SCORE[name]
-            or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
-            or 100
-        return name, score
-    end
-
-    local category = record.AssetCategory or record.Category or record.Name
-    if category and AssetsData then
-        local directory = AssetsData.Directory or AssetsData
-        local info = directory and directory[category]
-        if info and info.Rarity then
-            local r = info.Rarity
-            local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
-            name = tostring(name or "Common")
-            local score = RARITY_SCORE[name]
-                or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
-                or 100
-            return name, score
-        end
-    end
-
-    local areas = AreasData and (AreasData.Directory or AreasData)
-    local areaInfo = areas and record.AreaId and areas[record.AreaId]
-    local rarity = areaInfo and areaInfo.Rarity
-    local rarityId = type(rarity) == "table" and (rarity._id or rarity.DisplayName or rarity.Name)
-        or (type(rarity) == "string" and rarity)
-        or "Common"
-
-    local rarities = RarityData and (RarityData.Rarities or RarityData)
-    local rarityInfo = rarities and rarities[rarityId]
-    local displayName = (type(rarityInfo) == "table" and (rarityInfo.DisplayName or rarityInfo._id))
-        or (type(rarity) == "table" and rarity.DisplayName)
-        or rarityId
-        or "Common"
-
-    local score = RARITY_SCORE[displayName] or RARITY_SCORE[rarityId]
-        or (type(rarity) == "table" and tonumber(rarity.RarityNumber) and tonumber(rarity.RarityNumber) * 100)
-        or 100
-
-    return tostring(displayName), score
-end
-
-local function isBig(record)
-    if type(record) ~= "table" then return false end
-    return (tonumber(record.AssetScale) or 1) >= 1.35
-        or (tonumber(record.NestScale) or 1) >= 1.0
-end
-
-local function calculateScore(record)
-    local rarityName, score = resolveRarity(record)
-    local mutations = type(record.Mutations) == "table" and record.Mutations or {}
-
-    for _, mutation in ipairs(mutations) do
-        if mutation == "Rainbow" then
-            score += 35
-        elseif mutation == "Gold" or mutation == "Golden" then
-            score += 20
-        elseif mutation == "Silver" then
-            score += 10
-        end
-    end
-
-    local parasite = record.HasParasite == true
-        or record.BaseMutation == "Parasite"
-        or record.BaseMutation == "Monstrous"
-
-    if not parasite then
-        for _, mutation in ipairs(mutations) do
-            if mutation == "Parasite" or mutation == "Monstrous" then
-                parasite = true
-                break
-            end
-        end
-    end
-
-    if parasite then
-        score += 800
-    end
-
-    if isBig(record) then
-        score += 600
-    end
-
-    return rarityName, score
-end
-
-local function getSnapshot()
-    if EggState and type(EggState.ReadFieldEggs) == "function" then
-        local ok, snapshot = pcall(EggState.ReadFieldEggs)
-        if ok and type(snapshot) == "table" and type(snapshot.Records) == "table" then
-            return snapshot.Records
-        end
-    end
-
-    local provider = rawget(_G, "GetEggSnapshot")
-    if type(provider) == "function" then
-        local ok, snapshot = pcall(provider)
-        if ok and type(snapshot) == "table" then
-            return snapshot.Records or snapshot
-        end
-    end
-
-    return nil, "EggState.ReadFieldEggs unavailable"
-end
-
-local function findBestEgg()
-    local records, err = getSnapshot()
-    if type(records) ~= "table" then
-        return nil, err or "No egg snapshot"
-    end
-
-    local best
-    for _, record in ipairs(records) do
-        if type(record) == "table"
-            and record.State == "Slot"
-            and record.BoundsCFrame then
-
-            local rarityName, score = calculateScore(record)
-            local candidate = {
-                record = record,
-                uid = record.Uid,
-                name = tostring(record.AssetCategory or record.Name or record.Uid or "Unknown Egg"),
-                rarity = rarityName,
-                score = score,
-                area = tostring(record.AreaId or record.Area or "Unknown"),
-            }
-
-            if not best or candidate.score > best.score then
-                best = candidate
-            end
-        end
-    end
-
-    if not best then
-        return nil, "No available field eggs found"
-    end
-
-    return best
-end
-
-local scannerEnabled = false
-local scanThread
-
-local function renderBest()
-    local best, err = findBestEgg()
-    if not best then
-        target.Text = "Target: None"
-        details.Text = "Rarity: —   Score: —   Area: —"
-        status.Text = "Status: " .. tostring(err or "No target")
-        return false
-    end
-
-    target.Text = "Target: " .. best.name
-    details.Text = string.format("Rarity: %s   Score: %d   Area: %s", best.rarity, best.score, best.area)
-    status.Text = "Status: ON • Best value found"
-    return true
-end
-
-local function stopScanner()
-    scannerEnabled = false
-    toggle.Text = "Best Egg Scanner: OFF"
-    toggle.BackgroundColor3 = Color3.fromRGB(42, 44, 56)
-    status.Text = "Status: OFF"
-    scanThread = nil
-end
-
-local function startScanner()
-    if scannerEnabled then return end
-    scannerEnabled = true
-    toggle.Text = "Best Egg Scanner: ON"
-    toggle.BackgroundColor3 = Color3.fromRGB(55, 78, 62)
-    renderBest()
-
-    scanThread = task.spawn(function()
-        while scannerEnabled and gui.Parent do
-            renderBest()
-            task.wait(1)
-        end
-    end)
-end
-
-toggle.MouseButton1Click:Connect(function()
-    if scannerEnabled then stopScanner() else startScanner() end
-end)
-
-scan.MouseButton1Click:Connect(function()
-    renderBest()
-end)
-
-_G.InstantEGGBestValue = {
-    FindBest = findBestEgg,
-    Scan = renderBest,
-    Enable = startScanner,
-    Disable = stopScanner,
-}
+print("[WCC Cheater] UI loaded.")
