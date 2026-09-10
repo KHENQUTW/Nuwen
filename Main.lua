@@ -16,13 +16,13 @@ end
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Remove an older copy if it exists.
-local old = playerGui:FindFirstChild("InstantEGG")
+local old = playerGui:FindFirstChild("WCC Nigga)
 if old then
     old:Destroy()
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "InstantEGG"
+gui.Name = "WCC Nigga"
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999999999
@@ -76,7 +76,7 @@ title.BackgroundTransparency = 1
 title.Position = UDim2.fromOffset(16, 0)
 title.Size = UDim2.new(1, -66, 1, 0)
 title.Font = Enum.Font.GothamMedium
-title.Text = "Instant EGG"
+title.Text = "WCC Nigga"
 title.TextColor3 = Color3.fromRGB(245, 246, 250)
 title.TextSize = 15
 title.TextXAlignment = Enum.TextXAlignment.Left
