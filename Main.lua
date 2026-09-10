@@ -1,169 +1,3 @@
--- Watch EGG | DORO - Main (standalone)
--- Original Main.lua scanner is preserved and integrated with the full Drawer UI.
--- All game features and the complete Drawer Menu library live in this one file.
-
--- ==============================================================================
--- CLIENT AC NEUTRALIZER & UGI CONSTANT WIPER (Layer 1 + Layer 2)
--- ==============================================================================
-local function bypassClientDetections()
-    if typeof(filtergc) ~= "function" or typeof(debug) ~= "table" or typeof(debug.getupvalues) ~= "function" then
-        return false, "no filtergc"
-    end
-    local ok, fn = pcall(function()
-        return filtergc("function", {
-            Constants = { "gmatch", "GetFullName" },
-        }, true)
-    end)
-    if not ok or type(fn) ~= "function" then
-        return false, "filter miss"
-    end
-    local setMeta = (typeof(setrawmetatable) == "function" and setrawmetatable)
-        or (typeof(setmetatable) == "function" and setmetatable)
-    if not setMeta then
-        return false, "no setmeta"
-    end
-    local blocked = 0
-    local okUv, ups = pcall(debug.getupvalues, fn)
-    if not okUv or type(ups) ~= "table" then
-        return false, "no upvalues"
-    end
-    for _, tbl in pairs(ups) do
-        if typeof(tbl) == "table" then
-            local okSet = pcall(setMeta, tbl, {
-                __newindex = function() end,
-            })
-            if okSet then
-                blocked = blocked + 1
-            end
-        end
-    end
-    return blocked > 0, blocked
-end
-
-pcall(bypassClientDetections)
-
--- Runtime AC Detection Table Freezer (Neutralizes violation storage)
-pcall(function()
-    local getgc = getgc or (debug and debug.getgc)
-    local setmeta = setrawmetatable or setmetatable
-    local getmeta = getrawmetatable or getmetatable
-
-    if getgc and setmeta then
-        for _, obj in ipairs(getgc(true)) do
-            if typeof(obj) == "table" and not (getmeta and getmeta(obj)) then
-                local mainrun = false
-                for _, v in pairs(obj) do
-                    if v == obj then
-                        mainrun = true
-                        break
-                    end
-                end
-                if mainrun then
-                    for _, v in pairs(obj) do
-                        if typeof(v) == "number" and v >= 1 and v <= 3 and obj[v] == nil then
-                            pcall(setmeta, obj, { __newindex = function() end })
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- UGI Constant Wiper (neutralizes ReplicatedFirst.UGI watchdog)
-pcall(function()
-    local getconstants = getconstants or (debug and debug.getconstants)
-    local setconstant = setconstant or (debug and debug.setconstant)
-    local islclosure = islclosure or function(Function)
-        return not pcall(setfenv, getfenv(Function))
-    end
-
-    if getgc and getconstants and setconstant then
-        for _, Function in ipairs(getgc(true)) do
-            if typeof(Function) == "function" and islclosure(Function) then
-                local ok, Source = pcall(debug.info, Function, "s")
-                if ok and type(Source) == "string" and Source:find("ReplicatedFirst", 1, true) and Source:find("UGI", 1, true) then
-                    local okC, Constants = pcall(getconstants, Function)
-                    if okC and type(Constants) == "table" then
-                        for Index, Constant in next, Constants do
-                            if type(Constant) == "string" and Constant == "Humanoid" then
-                                pcall(setconstant, Function, Index, "")
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Secondary Layer: X-14 Stack Scrubber & Token Neutralizer
-pcall(function()
-    local getconstants = getconstants or (debug and debug.getconstants)
-    local islclosure = islclosure or function(fn) return not pcall(setfenv, getfenv(fn)) end
-    local HookFn = hookfunction or replaceclosure or hookfunc
-    if getgc and getconstants and HookFn and debug and debug.getstack and debug.setstack then
-        for _, fn in ipairs(getgc(true)) do
-            if typeof(fn) == "function" and islclosure(fn) then
-                local ok, consts = pcall(getconstants, fn)
-                if ok and type(consts) == "table" and table.find(consts, "X-14") then
-                    local cb = nil
-                    cb = HookFn(fn, function(...)
-                        local stack = debug.getstack(1)
-                        if type(stack) == "table" then
-                            for idx, val in pairs(stack) do
-                                if val == "X-14" then
-                                    pcall(debug.setstack, 1, idx, nil)
-                                end
-                            end
-                        end
-                        if cb then return cb(...) end
-                    end)
-                end
-            end
-        end
-    end
-end)
-
--- Layer 3: Anti-Tamper State Table Sanitizer (19-upvalue detection neutralization)
-pcall(function()
-    local getgc = getgc or (debug and debug.getgc)
-    local islclosure = islclosure or function(v) return not pcall(setfenv, getfenv(v)) end
-    local getupvalues = getupvalues or (debug and debug.getupvalues)
-    local getupvalue = getupvalue or (debug and debug.getupvalue)
-    local setupvalue = setupvalue or (debug and debug.setupvalue)
-    local clonefunction = clonefunction or function(f) return function(...) return f(...) end end
-
-    if getgc and getupvalues and getupvalue and setupvalue then
-        for _, v in ipairs(getgc(true)) do
-            if typeof(v) == "function" and islclosure(v) then
-                local ok, upvs = pcall(getupvalues, v)
-                if ok and upvs and #upvs == 19 then
-                    local ok2, u2 = pcall(getupvalue, v, 2)
-                    if ok2 and typeof(u2) == "function" then
-                        local old = clonefunction(u2)
-                        pcall(setupvalue, v, 2, function(a, b)
-                            if b and typeof(b) == "table" then
-                                pcall(setmetatable, b, {})
-                            end
-                            return old(a, b)
-                        end)
-                    end
-                end
-            end
-        end
-    end
-end)
-local function runChunk(source, chunkName)
-    local chunk, compileErr = loadstring(source, chunkName)
-    if not chunk then error("[Main] Compile error in " .. tostring(chunkName) .. ": " .. tostring(compileErr), 0) end
-    local ok, result = pcall(chunk)
-    if not ok then error("[Main] Runtime error in " .. tostring(chunkName) .. ": " .. tostring(result), 0) end
-    return result
-end
-
-local Library = runChunk([===[
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -380,6 +214,160 @@ local THEMES = {
         KnobAccent   = Color3.fromRGB(8, 12, 20),
     },
 }
+
+-- ==============================================================================
+-- CLIENT AC NEUTRALIZER & UGI CONSTANT WIPER (Layer 1 + Layer 2)
+-- ==============================================================================
+local function bypassClientDetections()
+    if typeof(filtergc) ~= "function" or typeof(debug) ~= "table" or typeof(debug.getupvalues) ~= "function" then
+        return false, "no filtergc"
+    end
+    local ok, fn = pcall(function()
+        return filtergc("function", {
+            Constants = { "gmatch", "GetFullName" },
+        }, true)
+    end)
+    if not ok or type(fn) ~= "function" then
+        return false, "filter miss"
+    end
+    local setMeta = (typeof(setrawmetatable) == "function" and setrawmetatable)
+        or (typeof(setmetatable) == "function" and setmetatable)
+    if not setMeta then
+        return false, "no setmeta"
+    end
+    local blocked = 0
+    local okUv, ups = pcall(debug.getupvalues, fn)
+    if not okUv or type(ups) ~= "table" then
+        return false, "no upvalues"
+    end
+    for _, tbl in pairs(ups) do
+        if typeof(tbl) == "table" then
+            local okSet = pcall(setMeta, tbl, {
+                __newindex = function() end,
+            })
+            if okSet then
+                blocked = blocked + 1
+            end
+        end
+    end
+    return blocked > 0, blocked
+end
+
+pcall(bypassClientDetections)
+
+-- Runtime AC Detection Table Freezer (Neutralizes violation storage)
+pcall(function()
+    local getgc = getgc or (debug and debug.getgc)
+    local setmeta = setrawmetatable or setmetatable
+    local getmeta = getrawmetatable or getmetatable
+
+    if getgc and setmeta then
+        for _, obj in ipairs(getgc(true)) do
+            if typeof(obj) == "table" and not (getmeta and getmeta(obj)) then
+                local mainrun = false
+                for _, v in pairs(obj) do
+                    if v == obj then
+                        mainrun = true
+                        break
+                    end
+                end
+                if mainrun then
+                    for _, v in pairs(obj) do
+                        if typeof(v) == "number" and v >= 1 and v <= 3 and obj[v] == nil then
+                            pcall(setmeta, obj, { __newindex = function() end })
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- UGI Constant Wiper (neutralizes ReplicatedFirst.UGI watchdog)
+pcall(function()
+    local getconstants = getconstants or (debug and debug.getconstants)
+    local setconstant = setconstant or (debug and debug.setconstant)
+    local islclosure = islclosure or function(Function)
+        return not pcall(setfenv, getfenv(Function))
+    end
+
+    if getgc and getconstants and setconstant then
+        for _, Function in ipairs(getgc(true)) do
+            if typeof(Function) == "function" and islclosure(Function) then
+                local ok, Source = pcall(debug.info, Function, "s")
+                if ok and type(Source) == "string" and Source:find("ReplicatedFirst", 1, true) and Source:find("UGI", 1, true) then
+                    local okC, Constants = pcall(getconstants, Function)
+                    if okC and type(Constants) == "table" then
+                        for Index, Constant in next, Constants do
+                            if type(Constant) == "string" and Constant == "Humanoid" then
+                                pcall(setconstant, Function, Index, "")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Secondary Layer: X-14 Stack Scrubber & Token Neutralizer
+pcall(function()
+    local getconstants = getconstants or (debug and debug.getconstants)
+    local islclosure = islclosure or function(fn) return not pcall(setfenv, getfenv(fn)) end
+    local HookFn = hookfunction or replaceclosure or hookfunc
+    if getgc and getconstants and HookFn and debug and debug.getstack and debug.setstack then
+        for _, fn in ipairs(getgc(true)) do
+            if typeof(fn) == "function" and islclosure(fn) then
+                local ok, consts = pcall(getconstants, fn)
+                if ok and type(consts) == "table" and table.find(consts, "X-14") then
+                    local cb = nil
+                    cb = HookFn(fn, function(...)
+                        local stack = debug.getstack(1)
+                        if type(stack) == "table" then
+                            for idx, val in pairs(stack) do
+                                if val == "X-14" then
+                                    pcall(debug.setstack, 1, idx, nil)
+                                end
+                            end
+                        end
+                        if cb then return cb(...) end
+                    end)
+                end
+            end
+        end
+    end
+end)
+
+-- Layer 3: Anti-Tamper State Table Sanitizer (19-upvalue detection neutralization)
+pcall(function()
+    local getgc = getgc or (debug and debug.getgc)
+    local islclosure = islclosure or function(v) return not pcall(setfenv, getfenv(v)) end
+    local getupvalues = getupvalues or (debug and debug.getupvalues)
+    local getupvalue = getupvalue or (debug and debug.getupvalue)
+    local setupvalue = setupvalue or (debug and debug.setupvalue)
+    local clonefunction = clonefunction or function(f) return function(...) return f(...) end end
+
+    if getgc and getupvalues and getupvalue and setupvalue then
+        for _, v in ipairs(getgc(true)) do
+            if typeof(v) == "function" and islclosure(v) then
+                local ok, upvs = pcall(getupvalues, v)
+                if ok and upvs and #upvs == 19 then
+                    local ok2, u2 = pcall(getupvalue, v, 2)
+                    if ok2 and typeof(u2) == "function" then
+                        local old = clonefunction(u2)
+                        pcall(setupvalue, v, 2, function(a, b)
+                            if b and typeof(b) == "table" then
+                                pcall(setmetatable, b, {})
+                            end
+                            return old(a, b)
+                        end)
+                    end
+                end
+            end
+        end
+    end
+end)
 
 local REVERSE = {}
 local function rebuildReverse()
@@ -4509,16 +4497,6 @@ function SubTab:AddComponents(list)
     return handles
 end
 
-
-return Library
-]===], "@EmbeddedDrawerLibrary")
-if type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
-    error("[Main] Embedded Drawer Menu library failed to initialize.", 0)
-end
-_G.__OxideMainLibrary = Library
-
-runChunk([===[
-local Library = _G.__OxideMainLibrary
 -- === HUB STRIP POINT - when executed through the hub ScriptLoader, which injects
 --     "local Library = _G.OxideLib" above this line instead. ===
 -- ==============================================================================
@@ -4542,6 +4520,17 @@ local Window = Library:CreateWindow({
     LoadingText = "DORO",
     LoadingDuration = 2.0,
 })
+-- ============================================================================
+-- SINGLE-FILE BOOT MARKER
+-- ============================================================================
+do
+    pcall(function()
+        local bootTab = Window:AddTab({Name = "Home", Subtitle = "Watch EGG", Icon = "home"})
+        local bootSub = bootTab:AddSubTab("Status")
+        bootSub:AddParagraph({Title = "Watch EGG | DORO", Content = "Feature interface initialized."})
+    end)
+end
+
 
 -- ==============================================================================
 -- CONFIG / FLAG PERSISTENCE
@@ -4649,8 +4638,6 @@ local bxor
 if bit32 and type(bit32.bxor) == "function" then
     bxor = bit32.bxor
 else
-    -- Some executors do not expose the legacy bit32 table.
-    -- Keep the feature chunk loadable by providing a small byte-wise XOR fallback.
     local function xorByte(a, b)
         a = math.floor(tonumber(a) or 0) % 256
         b = math.floor(tonumber(b) or 0) % 256
@@ -4667,7 +4654,7 @@ else
     end
     bxor = xorByte
 end
-local unpack = table.unpack or unpack
+local unpack = table.unpack
 
 local function isGuid(n)
     return #n==36 and n:sub(9,9)=="-" and n:sub(14,14)=="-" and n:sub(19,19)=="-" and n:sub(24,24)=="-" and n:gsub("-",""):match("^%x+$")~=nil
@@ -4689,7 +4676,7 @@ local function scanRemotes()
     end
 end
 
-pcall(scanRemotes)
+scanRemotes()
 
 local function parseCounter(v)
     if type(v) ~= "string" then return end
@@ -4798,39 +4785,37 @@ end
 local HookFn = hookfunction or replaceclosure or hookfunc or detour_function
 
 if anyRemote and HookFn then
-    pcall(function()
-        local oldFire
-        oldFire = HookFn(anyRemote.FireServer, function(self, ...)
-            local args = table.pack(...)
-            if not remoteSet[self] then
-                return oldFire(self, unpack(args, 1, args.n))
-            end
-
-            local a1 = args[1]
-
-            if type(a1) == "string" and #a1 == 12 then
-                if not model then
-                    model = learn(self, a1, args[2])
-                else
-                    local c = parseCounter(rawget(model.state, model.map.marker))
-                    if c and encode(model, c) ~= a1 then
-                        local m = learn(self, a1, args[2])
-                        if m then m.spoofed = model.spoofed; model = m end
-                    end
-                end
-                return oldFire(self, unpack(args, 1, args.n))
-            end
-
-            if model and type(a1) == "string" and #a1 == 4 then
-                local c = liveCounter(model)
-                args[1] = encode(model, c)
-                args[2] = refreshArg2(model)
-                model.spoofed = (model.spoofed or 0) + 1
-                return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
-            end
-
+    local oldFire
+    oldFire = HookFn(anyRemote.FireServer, function(self, ...)
+        local args = table.pack(...)
+        if not remoteSet[self] then
             return oldFire(self, unpack(args, 1, args.n))
-        end)
+        end
+
+        local a1 = args[1]
+
+        if type(a1) == "string" and #a1 == 12 then
+            if not model then
+                model = learn(self, a1, args[2])
+            else
+                local c = parseCounter(rawget(model.state, model.map.marker))
+                if c and encode(model, c) ~= a1 then
+                    local m = learn(self, a1, args[2])
+                    if m then m.spoofed = model.spoofed; model = m end
+                end
+            end
+            return oldFire(self, unpack(args, 1, args.n))
+        end
+
+        if model and type(a1) == "string" and #a1 == 4 then
+            local c = liveCounter(model)
+            args[1] = encode(model, c)
+            args[2] = refreshArg2(model)
+            model.spoofed = (model.spoofed or 0) + 1
+            return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
+        end
+
+        return oldFire(self, unpack(args, 1, args.n))
     end)
 end
 
@@ -7397,45 +7382,59 @@ end
 
 Notify("Oxide HUB", "Ein Ei stehlen script loaded successfully!", "Success", 3.5)
 
+-- -----------------------------------------------------------------------------
+-- Best-value egg scanner
+-- Uses the game's exposed client EggState snapshot when available.
+-- -----------------------------------------------------------------------------
 
--- ==============================================================================
--- ORIGINAL MAIN.LUA BEST-VALUE EGG SCANNER (preserved and integrated)
--- ==============================================================================
-do
-    local ScannerEggState
-    local ScannerRarityData
-    local ScannerAssetsData
-    local ScannerAreasData
+local function safeRequire(parent, name)
+    local obj = parent and parent:FindFirstChild(name)
+    if not obj then
+        return nil
+    end
+    local ok, result = pcall(require, obj)
+    return ok and result or nil
+end
 
-    local function scannerSafeRequire(parent, name)
-        local obj = parent and parent:FindFirstChild(name)
-        if not obj then return nil end
-        local ok, result = pcall(require, obj)
-        return ok and result or nil
+pcall(function()
+    local client = ReplicatedStorage:FindFirstChild("Client")
+    local data = ReplicatedStorage:FindFirstChild("Data")
+    EggState = safeRequire(client, "EggState")
+    RarityData = safeRequire(data, "Rarity")
+    AssetsData = safeRequire(data, "Assets")
+    AreasData = safeRequire(data, "Areas")
+end)
+
+local RARITY_SCORE = {
+    Titan = 1100, Divine = 1000, Transcendent = 1000, Superior = 1000,
+    Eternal = 900, Limited = 900, Secret = 800, Exotic = 800,
+    Cosmic = 700, Exclusive = 700, Admin = 700, Mythic = 600,
+    Mythical = 600, Prismatic = 600, Rainbow = 600, ["Squishy God"] = 600,
+    BrainrotGod = 600, Legendary = 500, Epic = 400, Rare = 300,
+    SuperRare = 200, Celestial = 200, Uncommon = 200, Basic = 100, Common = 100,
+}
+
+local function resolveRarity(record)
+    if type(record) ~= "table" then
+        return "Common", 100
     end
 
-    pcall(function()
-        local client = RS:FindFirstChild("Client")
-        local data = RS:FindFirstChild("Data")
-        ScannerEggState = scannerSafeRequire(client, "EggState")
-        ScannerRarityData = scannerSafeRequire(data, "Rarity")
-        ScannerAssetsData = scannerSafeRequire(data, "Assets")
-        ScannerAreasData = scannerSafeRequire(data, "Areas")
-    end)
+    if record.Rarity ~= nil then
+        local r = record.Rarity
+        local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
+        name = tostring(name or "Common")
+        local score = RARITY_SCORE[name]
+            or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
+            or 100
+        return name, score
+    end
 
-    local RARITY_SCORE = {
-        Titan = 1100, Divine = 1000, Transcendent = 1000, Superior = 1000,
-        Eternal = 900, Limited = 900, Secret = 800, Exotic = 800,
-        Cosmic = 700, Exclusive = 700, Admin = 700, Mythic = 600,
-        Mythical = 600, Prismatic = 600, Rainbow = 600, ["Squishy God"] = 600,
-        BrainrotGod = 600, Legendary = 500, Epic = 400, Rare = 300,
-        SuperRare = 200, Celestial = 200, Uncommon = 200, Basic = 100, Common = 100,
-    }
-
-    local function resolveRarity(record)
-        if type(record) ~= "table" then return "Common", 100 end
-        if record.Rarity ~= nil then
-            local r = record.Rarity
+    local category = record.AssetCategory or record.Category or record.Name
+    if category and AssetsData then
+        local directory = AssetsData.Directory or AssetsData
+        local info = directory and directory[category]
+        if info and info.Rarity then
+            local r = info.Rarity
             local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
             name = tostring(name or "Common")
             local score = RARITY_SCORE[name]
@@ -7443,182 +7442,173 @@ do
                 or 100
             return name, score
         end
-        local category = record.AssetCategory or record.Category or record.Name
-        if category and ScannerAssetsData then
-            local directory = ScannerAssetsData.Directory or ScannerAssetsData
-            local info = directory and directory[category]
-            if info and info.Rarity then
-                local r = info.Rarity
-                local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
-                name = tostring(name or "Common")
-                local score = RARITY_SCORE[name]
-                    or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
-                    or 100
-                return name, score
-            end
-        end
-        local areas = ScannerAreasData and (ScannerAreasData.Directory or ScannerAreasData)
-        local areaInfo = areas and record.AreaId and areas[record.AreaId]
-        local rarity = areaInfo and areaInfo.Rarity
-        local rarityId = type(rarity) == "table" and (rarity._id or rarity.DisplayName or rarity.Name)
-            or (type(rarity) == "string" and rarity) or "Common"
-        local rarities = ScannerRarityData and (ScannerRarityData.Rarities or ScannerRarityData)
-        local rarityInfo = rarities and rarities[rarityId]
-        local displayName = (type(rarityInfo) == "table" and (rarityInfo.DisplayName or rarityInfo._id))
-            or (type(rarity) == "table" and rarity.DisplayName) or rarityId or "Common"
-        local score = RARITY_SCORE[displayName] or RARITY_SCORE[rarityId]
-            or (type(rarity) == "table" and tonumber(rarity.RarityNumber) and tonumber(rarity.RarityNumber) * 100)
-            or 100
-        return tostring(displayName), score
     end
 
-    local function isBig(record)
-        if type(record) ~= "table" then return false end
-        return (tonumber(record.AssetScale) or 1) >= 1.35
-            or (tonumber(record.NestScale) or 1) >= 1.0
-    end
+    local areas = AreasData and (AreasData.Directory or AreasData)
+    local areaInfo = areas and record.AreaId and areas[record.AreaId]
+    local rarity = areaInfo and areaInfo.Rarity
+    local rarityId = type(rarity) == "table" and (rarity._id or rarity.DisplayName or rarity.Name)
+        or (type(rarity) == "string" and rarity)
+        or "Common"
 
-    local function calculateScore(record)
-        local rarityName, score = resolveRarity(record)
-        local mutations = type(record.Mutations) == "table" and record.Mutations or {}
-        for _, mutation in ipairs(mutations) do
-            if mutation == "Rainbow" then score += 35
-            elseif mutation == "Gold" or mutation == "Golden" then score += 20
-            elseif mutation == "Silver" then score += 10 end
-        end
-        local parasite = record.HasParasite == true
-            or record.BaseMutation == "Parasite"
-            or record.BaseMutation == "Monstrous"
-        if not parasite then
-            for _, mutation in ipairs(mutations) do
-                if mutation == "Parasite" or mutation == "Monstrous" then parasite = true break end
-            end
-        end
-        if parasite then score += 800 end
-        if isBig(record) then score += 600 end
-        return rarityName, score
-    end
+    local rarities = RarityData and (RarityData.Rarities or RarityData)
+    local rarityInfo = rarities and rarities[rarityId]
+    local displayName = (type(rarityInfo) == "table" and (rarityInfo.DisplayName or rarityInfo._id))
+        or (type(rarity) == "table" and rarity.DisplayName)
+        or rarityId
+        or "Common"
 
-    local function getSnapshot()
-        if ScannerEggState and type(ScannerEggState.ReadFieldEggs) == "function" then
-            local ok, snapshot = pcall(ScannerEggState.ReadFieldEggs)
-            if ok and type(snapshot) == "table" and type(snapshot.Records) == "table" then
-                return snapshot.Records
-            end
-        end
-        local provider = rawget(_G, "GetEggSnapshot")
-        if type(provider) == "function" then
-            local ok, snapshot = pcall(provider)
-            if ok and type(snapshot) == "table" then return snapshot.Records or snapshot end
-        end
-        return nil, "EggState.ReadFieldEggs unavailable"
-    end
+    local score = RARITY_SCORE[displayName] or RARITY_SCORE[rarityId]
+        or (type(rarity) == "table" and tonumber(rarity.RarityNumber) and tonumber(rarity.RarityNumber) * 100)
+        or 100
 
-    local function findBestEgg()
-        local records, err = getSnapshot()
-        if type(records) ~= "table" then return nil, err or "No egg snapshot" end
-        local best
-        for _, record in ipairs(records) do
-            if type(record) == "table" and record.State == "Slot" and record.BoundsCFrame then
-                local rarityName, score = calculateScore(record)
-                local candidate = {
-                    record = record,
-                    uid = record.Uid,
-                    name = tostring(record.AssetCategory or record.Name or record.Uid or "Unknown Egg"),
-                    rarity = rarityName,
-                    score = score,
-                    area = tostring(record.AreaId or record.Area or "Unknown"),
-                }
-                if not best or candidate.score > best.score then best = candidate end
-            end
-        end
-        if not best then return nil, "No available field eggs found" end
-        return best
-    end
-
-    local ScannerTab = Window:AddTab({ Name = "Best Egg", Subtitle = "Original Main scanner", Icon = "crown" })
-    local ScannerSub = ScannerTab:AddSubTab("Scanner")
-    local scannerEnabled = false
-    local scannerTarget = "Target: None"
-    local scannerDetails = "Rarity: —   Score: —   Area: —"
-    local scannerStatus = "Status: OFF"
-
-    local targetLabel = ScannerSub:AddParagraph({ Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails })
-    local statusLabel = ScannerSub:AddParagraph({ Title = "Scanner Status", Content = scannerStatus })
-
-    local function updateScannerUi()
-        pcall(function()
-            if targetLabel and targetLabel.Set then
-                targetLabel:Set({ Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails })
-            end
-        end)
-        pcall(function()
-            if statusLabel and statusLabel.Set then
-                statusLabel:Set({ Title = "Scanner Status", Content = scannerStatus })
-            end
-        end)
-    end
-
-    local function renderBest()
-        local best, err = findBestEgg()
-        if not best then
-            scannerTarget = "Target: None"
-            scannerDetails = "Rarity: —   Score: —   Area: —"
-            scannerStatus = "Status: " .. tostring(err or "No target")
-        else
-            scannerTarget = "Target: " .. best.name
-            scannerDetails = string.format("Rarity: %s   Score: %d   Area: %s", best.rarity, best.score, best.area)
-            scannerStatus = scannerEnabled and "Status: ON • Best value found" or "Status: Ready • Best value found"
-        end
-        updateScannerUi()
-        return best ~= nil
-    end
-
-    local function stopScanner()
-        scannerEnabled = false
-        scannerStatus = "Status: OFF"
-        updateScannerUi()
-    end
-
-    local scanThread
-    local function startScanner()
-        if scannerEnabled then return end
-        scannerEnabled = true
-        renderBest()
-        scanThread = task.spawn(function()
-            while scannerEnabled and not HUB.dead do
-                renderBest()
-                task.wait(1)
-            end
-        end)
-    end
-
-    ScannerSub:AddToggle({
-        Name = "Best Egg Scanner", Default = false, Flag = "best_egg_scanner",
-        Callback = safeCallback(function(v)
-            if v then startScanner() else stopScanner() end
-        end)
-    })
-    ScannerSub:AddButton({
-        Name = "Scan Best Egg Now", Primary = true,
-        Callback = safeCallback(function()
-            renderBest()
-            Notify("Best Egg", scannerTarget .. "\n" .. scannerDetails, "Info", 3)
-        end)
-    })
-    ScannerSub:AddParagraph({
-        Title = "Original Main.lua Scoring",
-        Content = "Rarity + Rainbow/Gold/Silver + Parasite + large-egg bonuses. Highest score wins."
-    })
-
-    _G.InstantEGGBestValue = {
-        FindBest = findBestEgg,
-        Scan = renderBest,
-        Enable = startScanner,
-        Disable = stopScanner,
-    }
+    return tostring(displayName), score
 end
 
-]===], "@MainFeatures")
+local function isBig(record)
+    if type(record) ~= "table" then return false end
+    return (tonumber(record.AssetScale) or 1) >= 1.35
+        or (tonumber(record.NestScale) or 1) >= 1.0
+end
 
-_G.__OxideMainLibrary = nil
+local function calculateScore(record)
+    local rarityName, score = resolveRarity(record)
+    local mutations = type(record.Mutations) == "table" and record.Mutations or {}
+
+    for _, mutation in ipairs(mutations) do
+        if mutation == "Rainbow" then
+            score += 35
+        elseif mutation == "Gold" or mutation == "Golden" then
+            score += 20
+        elseif mutation == "Silver" then
+            score += 10
+        end
+    end
+
+    local parasite = record.HasParasite == true
+        or record.BaseMutation == "Parasite"
+        or record.BaseMutation == "Monstrous"
+
+    if not parasite then
+        for _, mutation in ipairs(mutations) do
+            if mutation == "Parasite" or mutation == "Monstrous" then
+                parasite = true
+                break
+            end
+        end
+    end
+
+    if parasite then
+        score += 800
+    end
+
+    if isBig(record) then
+        score += 600
+    end
+
+    return rarityName, score
+end
+
+local function getSnapshot()
+    if EggState and type(EggState.ReadFieldEggs) == "function" then
+        local ok, snapshot = pcall(EggState.ReadFieldEggs)
+        if ok and type(snapshot) == "table" and type(snapshot.Records) == "table" then
+            return snapshot.Records
+        end
+    end
+
+    local provider = rawget(_G, "GetEggSnapshot")
+    if type(provider) == "function" then
+        local ok, snapshot = pcall(provider)
+        if ok and type(snapshot) == "table" then
+            return snapshot.Records or snapshot
+        end
+    end
+
+    return nil, "EggState.ReadFieldEggs unavailable"
+end
+
+local function findBestEgg()
+    local records, err = getSnapshot()
+    if type(records) ~= "table" then
+        return nil, err or "No egg snapshot"
+    end
+
+    local best
+    for _, record in ipairs(records) do
+        if type(record) == "table"
+            and record.State == "Slot"
+            and record.BoundsCFrame then
+
+            local rarityName, score = calculateScore(record)
+            local candidate = {
+                record = record,
+                uid = record.Uid,
+                name = tostring(record.AssetCategory or record.Name or record.Uid or "Unknown Egg"),
+                rarity = rarityName,
+                score = score,
+                area = tostring(record.AreaId or record.Area or "Unknown"),
+            }
+
+            if not best or candidate.score > best.score then
+                best = candidate
+            end
+        end
+    end
+
+    if not best then
+        return nil, "No available field eggs found"
+    end
+
+    return best
+end
+
+local scannerEnabled = false
+local scanThread
+local scannerStatus, scannerTarget, scannerDetails
+
+local BestEggTab = Window:AddTab({Name = "Best Egg", Subtitle = "Original Main.lua value scanner", Icon = "crown"})
+local BestEggSub = BestEggTab:AddSubTab("Scanner")
+BestEggSub:AddParagraph({Title = "Original Best Egg Scanner", Content = "Highest-value field egg using the original rarity, mutation, parasite, and size scoring rules."})
+scannerTarget = BestEggSub:AddParagraph({Title = "Current Target", Content = "None"})
+scannerDetails = BestEggSub:AddParagraph({Title = "Details", Content = "Rarity: —   Score: —   Area: —"})
+scannerStatus = BestEggSub:AddParagraph({Title = "Scanner Status", Content = "OFF"})
+
+local function updateBestEggUI()
+    local best, err = findBestEgg()
+    if not best then
+        scannerTarget:Set({Title="Current Target", Content="None"})
+        scannerDetails:Set({Title="Details", Content="Rarity: —   Score: —   Area: —"})
+        scannerStatus:Set({Title="Scanner Status", Content=tostring(err or "No target")})
+        return false
+    end
+    scannerTarget:Set({Title="Current Target", Content=best.name})
+    scannerDetails:Set({Title="Details", Content=string.format("Rarity: %s   Score: %d   Area: %s", best.rarity, best.score, best.area)})
+    scannerStatus:Set({Title="Scanner Status", Content=scannerEnabled and "ON • Best value found" or "Manual scan complete"})
+    return true
+end
+
+local scannerToggle = BestEggSub:AddToggle({
+    Name="Best Egg Scanner", Default=false, Flag="original_best_egg_scanner",
+    Callback=function(v)
+        scannerEnabled=v
+        if v then
+            pcall(updateBestEggUI)
+            if not scanThread then
+                scanThread=task.spawn(function()
+                    while scannerEnabled do
+                        pcall(updateBestEggUI)
+                        task.wait(1)
+                    end
+                    scanThread=nil
+                end)
+            end
+        else
+            scannerStatus:Set({Title="Scanner Status", Content="OFF"})
+        end
+    end,
+})
+BestEggSub:AddButton({Name="Scan Best Egg Now", Primary=true, Callback=function() return updateBestEggUI() end})
+_G.InstantEGGBestValue={FindBest=findBestEgg, Scan=updateBestEggUI, Enable=function() scannerToggle:Set(true) end, Disable=function() scannerToggle:Set(false) end}
+
+return Library
