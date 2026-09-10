@@ -16,13 +16,13 @@ end
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Remove an older copy if it exists.
-local old = playerGui:FindFirstChild("WCC Nigga)
+local old = playerGui:FindFirstChild("InstantEgg)
 if old then
     old:Destroy()
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "WCC Nigga"
+gui.Name = "InstantEGG"
 gui.IgnoreGuiInset = true
 gui.ResetOnSpawn = false
 gui.DisplayOrder = 999999999
