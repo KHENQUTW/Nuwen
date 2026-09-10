@@ -197,12 +197,12 @@ local minimize = new("TextButton", {
     Size = UDim2.fromOffset(30, 30),
     BackgroundColor3 = Color3.fromRGB(42, 45, 56),
     AutoButtonColor = false,
-    Font = Enum.Font.GothamMedium,
+    Font = Enum.Font.GothamBold,
     Text = "−",
     TextColor3 = Color3.fromRGB(235, 238, 245),
-    TextSize = 20,
+    TextSize = 18,
 }, header)
-addCorner(minimize, 9)
+addCorner(minimize, 15)
 
 -- ============================================================================
 -- BODY / DRAWER
@@ -695,6 +695,43 @@ end)
 
 local minimized = false
 local normalSize = window.Size
+local normalPosition = window.Position
+
+-- Small circular restore bubble. It lives outside the window so the
+-- minimized state does not leave a large header behind.
+local restoreBubble = new("TextButton", {
+    Name = "RestoreBubble",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = normalPosition,
+    Size = UDim2.fromOffset(54, 54),
+    BackgroundColor3 = Color3.fromRGB(27, 30, 39),
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Visible = false,
+    Font = Enum.Font.GothamBold,
+    Text = "W",
+    TextColor3 = Color3.fromRGB(240, 243, 250),
+    TextSize = 18,
+    ZIndex = window.ZIndex + 5,
+}, gui)
+addCorner(restoreBubble, 27)
+addStroke(restoreBubble, 0.25)
+
+local function setMinimized(value)
+    minimized = value
+
+    if minimized then
+        normalPosition = window.Position
+        restoreBubble.Position = normalPosition
+        restoreBubble.Visible = true
+        window.Visible = false
+    else
+        window.Visible = true
+        restoreBubble.Visible = false
+        window.Position = normalPosition
+        window.Size = normalSize
+    end
+end
 
 minimize.MouseEnter:Connect(function()
     tween(minimize, 0.1, {
@@ -709,21 +746,23 @@ minimize.MouseLeave:Connect(function()
 end)
 
 minimize.MouseButton1Click:Connect(function()
-    minimized = not minimized
+    setMinimized(not minimized)
+end)
 
-    if minimized then
-        minimize.Text = "+"
-        body.Visible = false
-        tween(window, 0.2, {
-            Size = UDim2.fromOffset(normalSize.X.Offset, 52),
-        })
-    else
-        minimize.Text = "−"
-        body.Visible = true
-        tween(window, 0.2, {
-            Size = normalSize,
-        })
-    end
+restoreBubble.MouseButton1Click:Connect(function()
+    setMinimized(false)
+end)
+
+restoreBubble.MouseEnter:Connect(function()
+    tween(restoreBubble, 0.1, {
+        BackgroundColor3 = Color3.fromRGB(42, 45, 56),
+    })
+end)
+
+restoreBubble.MouseLeave:Connect(function()
+    tween(restoreBubble, 0.1, {
+        BackgroundColor3 = Color3.fromRGB(27, 30, 39),
+    })
 end)
 
 -- ============================================================================
