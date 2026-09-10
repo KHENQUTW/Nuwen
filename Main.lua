@@ -4645,8 +4645,29 @@ end
 -- ==============================================================================
 -- BAC TELEMETRY PACKET SPOOFER
 -- ==============================================================================
-local bxor = bit32.bxor
-local unpack = table.unpack
+local bxor
+if bit32 and type(bit32.bxor) == "function" then
+    bxor = bit32.bxor
+else
+    -- Some executors do not expose the legacy bit32 table.
+    -- Keep the feature chunk loadable by providing a small byte-wise XOR fallback.
+    local function xorByte(a, b)
+        a = math.floor(tonumber(a) or 0) % 256
+        b = math.floor(tonumber(b) or 0) % 256
+        local out, bit = 0, 1
+        for _ = 1, 8 do
+            local aa = a % 2
+            local bb = b % 2
+            if aa ~= bb then out = out + bit end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            bit = bit * 2
+        end
+        return out
+    end
+    bxor = xorByte
+end
+local unpack = table.unpack or unpack
 
 local function isGuid(n)
     return #n==36 and n:sub(9,9)=="-" and n:sub(14,14)=="-" and n:sub(19,19)=="-" and n:sub(24,24)=="-" and n:gsub("-",""):match("^%x+$")~=nil
