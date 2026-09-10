@@ -4773,37 +4773,41 @@ end
 local HookFn = hookfunction or replaceclosure or hookfunc or detour_function
 
 if anyRemote and HookFn then
-    local oldFire
-    oldFire = HookFn(anyRemote.FireServer, function(self, ...)
-        local args = table.pack(...)
-        if not remoteSet[self] then
-            return oldFire(self, unpack(args, 1, args.n))
-        end
-
-        local a1 = args[1]
-
-        if type(a1) == "string" and #a1 == 12 then
-            if not model then
-                model = learn(self, a1, args[2])
-            else
-                local c = parseCounter(rawget(model.state, model.map.marker))
-                if c and encode(model, c) ~= a1 then
-                    local m = learn(self, a1, args[2])
-                    if m then m.spoofed = model.spoofed; model = m end
-                end
+    -- Hooking must never prevent the UI/features from loading. Some executors
+    -- reject hooking a RemoteEvent closure; treat that as a non-fatal optional feature.
+    pcall(function()
+        local oldFire
+        oldFire = HookFn(anyRemote.FireServer, function(self, ...)
+            local args = table.pack(...)
+            if not remoteSet[self] then
+                return oldFire(self, unpack(args, 1, args.n))
             end
+
+            local a1 = args[1]
+
+            if type(a1) == "string" and #a1 == 12 then
+                if not model then
+                    model = learn(self, a1, args[2])
+                else
+                    local c = parseCounter(rawget(model.state, model.map.marker))
+                    if c and encode(model, c) ~= a1 then
+                        local m = learn(self, a1, args[2])
+                        if m then m.spoofed = model.spoofed; model = m end
+                    end
+                end
+                return oldFire(self, unpack(args, 1, args.n))
+            end
+
+            if model and type(a1) == "string" and #a1 == 4 then
+                local c = liveCounter(model)
+                args[1] = encode(model, c)
+                args[2] = refreshArg2(model)
+                model.spoofed = (model.spoofed or 0) + 1
+                return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
+            end
+
             return oldFire(self, unpack(args, 1, args.n))
-        end
-
-        if model and type(a1) == "string" and #a1 == 4 then
-            local c = liveCounter(model)
-            args[1] = encode(model, c)
-            args[2] = refreshArg2(model)
-            model.spoofed = (model.spoofed or 0) + 1
-            return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
-        end
-
-        return oldFire(self, unpack(args, 1, args.n))
+        end)
     end)
 end
 
@@ -7290,6 +7294,37 @@ end
 -- -----------------------------------------------------------------------------
 do
 local ConfigSub = SettingsTab:AddSubTab("Configuration")
+
+ConfigSub:AddToggle({
+    Name = "Master Features Toggle",
+    Default = true,
+    Flag = "master_features",
+    Callback = safeCallback(function(v)
+        masterEnabled = (v == true)
+        if not masterEnabled then
+            autoStealEnabled = false
+            autoHatchEnabled = false
+            autoPlantEnabled = false
+            autoUpgradeBase = false
+            autoUpgradeTreadmill = false
+            autoTrainSpeed = false
+            autoBuyTrails = false
+            autoEquipBestPets = false
+            autoClaimRewards = false
+            autoSellPets = false
+            autoSellEggs = false
+            autoClaimMonsterChests = false
+            autoFeedMonster = false
+            batAuraEnabled = false
+            esp.enabled = false
+            pcall(stopFly)
+            pcall(SetFullbright, false)
+            pcall(SetAntiAFK, false)
+            pcall(SetupInstantPickup, false)
+        end
+        Notify("Master Features", masterEnabled and "Master switch ON" or "Master switch OFF", masterEnabled and "Success" or "Warning")
+    end)
+})
 
 if HAS_CONFIG then
     ConfigSub:AddInput({
