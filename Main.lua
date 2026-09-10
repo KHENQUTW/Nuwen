@@ -1,6 +1,6 @@
--- Watch EGG | DORO - Main (single-file build)
--- Original Main.lua scanner logic is preserved. Drawer Menu/UI library and all features are embedded in this file.
--- No ScriptLoader.lua, Window1.lua, function1.lua, or external _G.OxideLib dependency is required.
+-- Watch EGG | DORO - Main (standalone)
+-- Original Main.lua scanner is preserved and integrated with the full Drawer UI.
+-- All game features and the complete Drawer Menu library live in this one file.
 
 -- ==============================================================================
 -- CLIENT AC NEUTRALIZER & UGI CONSTANT WIPER (Layer 1 + Layer 2)
@@ -155,15 +155,15 @@ pcall(function()
         end
     end
 end)
-local function runEmbedded(source, name)
-    local chunk, compileErr = loadstring(source, name)
-    if not chunk then error("[Main] " .. tostring(compileErr), 0) end
+local function runChunk(source, chunkName)
+    local chunk, compileErr = loadstring(source, chunkName)
+    if not chunk then error("[Main] Compile error in " .. tostring(chunkName) .. ": " .. tostring(compileErr), 0) end
     local ok, result = pcall(chunk)
-    if not ok then error("[Main] " .. tostring(result), 0) end
+    if not ok then error("[Main] Runtime error in " .. tostring(chunkName) .. ": " .. tostring(result), 0) end
     return result
 end
 
-local Library = runEmbedded([===[
+local Library = runChunk([===[
 local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService       = game:GetService("GuiService")
@@ -4509,15 +4509,19 @@ function SubTab:AddComponents(list)
     return handles
 end
 
+
 return Library
 ]===], "@EmbeddedDrawerLibrary")
 if type(Library) ~= "table" or type(Library.CreateWindow) ~= "function" then
     error("[Main] Embedded Drawer Menu library failed to initialize.", 0)
 end
-_G.OxideEmbeddedLibrary = Library
+_G.__OxideMainLibrary = Library
 
-local FeatureSource = [===[
-local Library = _G.OxideEmbeddedLibrary
+runChunk([===[
+local Library = _G.__OxideMainLibrary
+-- === HUB STRIP POINT - when executed through the hub ScriptLoader, which injects
+--     "local Library = _G.OxideLib" above this line instead. ===
+-- ==============================================================================
 
 -- ==============================================================================
 -- RE-EXECUTION GUARD + RESOURCE TRACKING
@@ -4534,7 +4538,7 @@ local function trackDrawing(d) if d then table.insert(HUB.drawings, d) end; retu
 local Window = Library:CreateWindow({
     Name = "Watch EGG | DORO",
     DrawerMenu = true,
-    LoadingAnimation = true,
+    LoadingAnimation = false,
     LoadingText = "DORO",
     LoadingDuration = 2.0,
 })
@@ -4773,41 +4777,37 @@ end
 local HookFn = hookfunction or replaceclosure or hookfunc or detour_function
 
 if anyRemote and HookFn then
-    -- Hooking must never prevent the UI/features from loading. Some executors
-    -- reject hooking a RemoteEvent closure; treat that as a non-fatal optional feature.
-    pcall(function()
-        local oldFire
-        oldFire = HookFn(anyRemote.FireServer, function(self, ...)
-            local args = table.pack(...)
-            if not remoteSet[self] then
-                return oldFire(self, unpack(args, 1, args.n))
-            end
-
-            local a1 = args[1]
-
-            if type(a1) == "string" and #a1 == 12 then
-                if not model then
-                    model = learn(self, a1, args[2])
-                else
-                    local c = parseCounter(rawget(model.state, model.map.marker))
-                    if c and encode(model, c) ~= a1 then
-                        local m = learn(self, a1, args[2])
-                        if m then m.spoofed = model.spoofed; model = m end
-                    end
-                end
-                return oldFire(self, unpack(args, 1, args.n))
-            end
-
-            if model and type(a1) == "string" and #a1 == 4 then
-                local c = liveCounter(model)
-                args[1] = encode(model, c)
-                args[2] = refreshArg2(model)
-                model.spoofed = (model.spoofed or 0) + 1
-                return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
-            end
-
+    local oldFire
+    oldFire = HookFn(anyRemote.FireServer, function(self, ...)
+        local args = table.pack(...)
+        if not remoteSet[self] then
             return oldFire(self, unpack(args, 1, args.n))
-        end)
+        end
+
+        local a1 = args[1]
+
+        if type(a1) == "string" and #a1 == 12 then
+            if not model then
+                model = learn(self, a1, args[2])
+            else
+                local c = parseCounter(rawget(model.state, model.map.marker))
+                if c and encode(model, c) ~= a1 then
+                    local m = learn(self, a1, args[2])
+                    if m then m.spoofed = model.spoofed; model = m end
+                end
+            end
+            return oldFire(self, unpack(args, 1, args.n))
+        end
+
+        if model and type(a1) == "string" and #a1 == 4 then
+            local c = liveCounter(model)
+            args[1] = encode(model, c)
+            args[2] = refreshArg2(model)
+            model.spoofed = (model.spoofed or 0) + 1
+            return oldFire(self, unpack(args, 1, math.max(args.n, 2)))
+        end
+
+        return oldFire(self, unpack(args, 1, args.n))
     end)
 end
 
@@ -7295,37 +7295,6 @@ end
 do
 local ConfigSub = SettingsTab:AddSubTab("Configuration")
 
-ConfigSub:AddToggle({
-    Name = "Master Features Toggle",
-    Default = true,
-    Flag = "master_features",
-    Callback = safeCallback(function(v)
-        masterEnabled = (v == true)
-        if not masterEnabled then
-            autoStealEnabled = false
-            autoHatchEnabled = false
-            autoPlantEnabled = false
-            autoUpgradeBase = false
-            autoUpgradeTreadmill = false
-            autoTrainSpeed = false
-            autoBuyTrails = false
-            autoEquipBestPets = false
-            autoClaimRewards = false
-            autoSellPets = false
-            autoSellEggs = false
-            autoClaimMonsterChests = false
-            autoFeedMonster = false
-            batAuraEnabled = false
-            esp.enabled = false
-            pcall(stopFly)
-            pcall(SetFullbright, false)
-            pcall(SetAntiAFK, false)
-            pcall(SetupInstantPickup, false)
-        end
-        Notify("Master Features", masterEnabled and "Master switch ON" or "Master switch OFF", masterEnabled and "Success" or "Warning")
-    end)
-})
-
 if HAS_CONFIG then
     ConfigSub:AddInput({
         Name = "Config Name", Default = CONFIG_NAME, Flag = "cfg_name",
@@ -7374,268 +7343,6 @@ ConfigSub:AddButton({
     })
 end
 
--- -----------------------------------------------------------------------------
--- Best-value egg scanner
--- Uses the game's exposed client EggState snapshot when available.
--- -----------------------------------------------------------------------------
-
-local EggState
-local RarityData
-local AssetsData
-local AreasData
-
-local function safeRequire(parent, name)
-    local obj = parent and parent:FindFirstChild(name)
-    if not obj then
-        return nil
-    end
-    local ok, result = pcall(require, obj)
-    return ok and result or nil
-end
-
-pcall(function()
-    local client = ReplicatedStorage:FindFirstChild("Client")
-    local data = ReplicatedStorage:FindFirstChild("Data")
-    EggState = safeRequire(client, "EggState")
-    RarityData = safeRequire(data, "Rarity")
-    AssetsData = safeRequire(data, "Assets")
-    AreasData = safeRequire(data, "Areas")
-end)
-
-local RARITY_SCORE = {
-    Titan = 1100, Divine = 1000, Transcendent = 1000, Superior = 1000,
-    Eternal = 900, Limited = 900, Secret = 800, Exotic = 800,
-    Cosmic = 700, Exclusive = 700, Admin = 700, Mythic = 600,
-    Mythical = 600, Prismatic = 600, Rainbow = 600, ["Squishy God"] = 600,
-    BrainrotGod = 600, Legendary = 500, Epic = 400, Rare = 300,
-    SuperRare = 200, Celestial = 200, Uncommon = 200, Basic = 100, Common = 100,
-}
-
-local function resolveRarity(record)
-    if type(record) ~= "table" then
-        return "Common", 100
-    end
-
-    if record.Rarity ~= nil then
-        local r = record.Rarity
-        local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
-        name = tostring(name or "Common")
-        local score = RARITY_SCORE[name]
-            or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
-            or 100
-        return name, score
-    end
-
-    local category = record.AssetCategory or record.Category or record.Name
-    if category and AssetsData then
-        local directory = AssetsData.Directory or AssetsData
-        local info = directory and directory[category]
-        if info and info.Rarity then
-            local r = info.Rarity
-            local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
-            name = tostring(name or "Common")
-            local score = RARITY_SCORE[name]
-                or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
-                or 100
-            return name, score
-        end
-    end
-
-    local areas = AreasData and (AreasData.Directory or AreasData)
-    local areaInfo = areas and record.AreaId and areas[record.AreaId]
-    local rarity = areaInfo and areaInfo.Rarity
-    local rarityId = type(rarity) == "table" and (rarity._id or rarity.DisplayName or rarity.Name)
-        or (type(rarity) == "string" and rarity)
-        or "Common"
-
-    local rarities = RarityData and (RarityData.Rarities or RarityData)
-    local rarityInfo = rarities and rarities[rarityId]
-    local displayName = (type(rarityInfo) == "table" and (rarityInfo.DisplayName or rarityInfo._id))
-        or (type(rarity) == "table" and rarity.DisplayName)
-        or rarityId
-        or "Common"
-
-    local score = RARITY_SCORE[displayName] or RARITY_SCORE[rarityId]
-        or (type(rarity) == "table" and tonumber(rarity.RarityNumber) and tonumber(rarity.RarityNumber) * 100)
-        or 100
-
-    return tostring(displayName), score
-end
-
-local function isBig(record)
-    if type(record) ~= "table" then return false end
-    return (tonumber(record.AssetScale) or 1) >= 1.35
-        or (tonumber(record.NestScale) or 1) >= 1.0
-end
-
-local function calculateScore(record)
-    local rarityName, score = resolveRarity(record)
-    local mutations = type(record.Mutations) == "table" and record.Mutations or {}
-
-    for _, mutation in ipairs(mutations) do
-        if mutation == "Rainbow" then
-            score += 35
-        elseif mutation == "Gold" or mutation == "Golden" then
-            score += 20
-        elseif mutation == "Silver" then
-            score += 10
-        end
-    end
-
-    local parasite = record.HasParasite == true
-        or record.BaseMutation == "Parasite"
-        or record.BaseMutation == "Monstrous"
-
-    if not parasite then
-        for _, mutation in ipairs(mutations) do
-            if mutation == "Parasite" or mutation == "Monstrous" then
-                parasite = true
-                break
-            end
-        end
-    end
-
-    if parasite then
-        score += 800
-    end
-
-    if isBig(record) then
-        score += 600
-    end
-
-    return rarityName, score
-end
-
-local function getSnapshot()
-    if EggState and type(EggState.ReadFieldEggs) == "function" then
-        local ok, snapshot = pcall(EggState.ReadFieldEggs)
-        if ok and type(snapshot) == "table" and type(snapshot.Records) == "table" then
-            return snapshot.Records
-        end
-    end
-
-    local provider = rawget(_G, "GetEggSnapshot")
-    if type(provider) == "function" then
-        local ok, snapshot = pcall(provider)
-        if ok and type(snapshot) == "table" then
-            return snapshot.Records or snapshot
-        end
-    end
-
-    return nil, "EggState.ReadFieldEggs unavailable"
-end
-
-local function findBestEgg()
-    local records, err = getSnapshot()
-    if type(records) ~= "table" then
-        return nil, err or "No egg snapshot"
-    end
-
-    local best
-    for _, record in ipairs(records) do
-        if type(record) == "table"
-            and record.State == "Slot"
-            and record.BoundsCFrame then
-
-            local rarityName, score = calculateScore(record)
-            local candidate = {
-                record = record,
-                uid = record.Uid,
-                name = tostring(record.AssetCategory or record.Name or record.Uid or "Unknown Egg"),
-                rarity = rarityName,
-                score = score,
-                area = tostring(record.AreaId or record.Area or "Unknown"),
-            }
-
-            if not best or candidate.score > best.score then
-                best = candidate
-            end
-        end
-    end
-
-    if not best then
-        return nil, "No available field eggs found"
-    end
-
-    return best
-end
-
-
-
--- Original Main.lua Best Egg Scanner controls, integrated into the Drawer Menu.
-local ScannerTab = Window:AddTab({ Name = "Best Egg", Subtitle = "Highest-value egg scanner", Icon = "crown" })
-local ScannerSub = ScannerTab:AddSubTab("Scanner")
-local scannerEnabled = false
-local scanThread = nil
-local scannerTarget = "Target: None"
-local scannerDetails = "Rarity: —   Score: —   Area: —"
-local scannerStatus = "Status: OFF"
-
-local targetLabel = ScannerSub:AddParagraph({Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails})
-local statusLabel = ScannerSub:AddParagraph({Title = "Scanner Status", Content = scannerStatus})
-
-local function updateScannerUi()
-    pcall(function()
-        if targetLabel.Set then targetLabel:Set({Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails}) end
-    end)
-    pcall(function()
-        if statusLabel.Set then statusLabel:Set({Title = "Scanner Status", Content = scannerStatus}) end
-    end)
-end
-
-local function renderBest()
-    local best, err = findBestEgg()
-    if not best then
-        scannerTarget = "Target: None"
-        scannerDetails = "Rarity: —   Score: —   Area: —"
-        scannerStatus = "Status: " .. tostring(err or "No target")
-    else
-        scannerTarget = "Target: " .. best.name
-        scannerDetails = string.format("Rarity: %s   Score: %d   Area: %s", best.rarity, best.score, best.area)
-        scannerStatus = scannerEnabled and "Status: ON • Best value found" or "Status: Ready • Best value found"
-    end
-    updateScannerUi()
-    return best ~= nil
-end
-
-local function stopScanner()
-    scannerEnabled = false
-    scannerStatus = "Status: OFF"
-    updateScannerUi()
-end
-
-local function startScanner()
-    if scannerEnabled then return end
-    scannerEnabled = true
-    renderBest()
-    scanThread = task.spawn(function()
-        while scannerEnabled and not HUB.dead do
-            renderBest()
-            task.wait(1)
-        end
-    end)
-end
-
-ScannerSub:AddToggle({
-    Name = "Best Egg Scanner", Default = false, Flag = "best_egg_scanner",
-    Callback = function(v)
-        if v then startScanner() else stopScanner() end
-    end
-})
-ScannerSub:AddButton({
-    Name = "Scan Best Egg Now", Primary = true,
-    Callback = safeCallback(function()
-        renderBest()
-        Notify("Best Egg", scannerTarget .. "\n" .. scannerDetails, "Info", 3)
-    end)
-})
-ScannerSub:AddParagraph({
-    Title = "Scoring",
-    Content = "Rarity + mutation + parasite + large-egg bonuses. Highest-scoring available field egg is selected."
-})
-_G.InstantEGGBestValue = { FindBest = findBestEgg, Scan = renderBest, Enable = startScanner, Disable = stopScanner }
-
-
 -- ==============================================================================
 -- HUB CLEANUP & UNLOAD HANDLER
 -- ==============================================================================
@@ -7667,6 +7374,228 @@ end
 
 Notify("Oxide HUB", "Ein Ei stehlen script loaded successfully!", "Success", 3.5)
 
-]===]
-runEmbedded(FeatureSource, "@EmbeddedFeatures")
-_G.OxideLib = Library
+
+-- ==============================================================================
+-- ORIGINAL MAIN.LUA BEST-VALUE EGG SCANNER (preserved and integrated)
+-- ==============================================================================
+do
+    local ScannerEggState
+    local ScannerRarityData
+    local ScannerAssetsData
+    local ScannerAreasData
+
+    local function scannerSafeRequire(parent, name)
+        local obj = parent and parent:FindFirstChild(name)
+        if not obj then return nil end
+        local ok, result = pcall(require, obj)
+        return ok and result or nil
+    end
+
+    pcall(function()
+        local client = RS:FindFirstChild("Client")
+        local data = RS:FindFirstChild("Data")
+        ScannerEggState = scannerSafeRequire(client, "EggState")
+        ScannerRarityData = scannerSafeRequire(data, "Rarity")
+        ScannerAssetsData = scannerSafeRequire(data, "Assets")
+        ScannerAreasData = scannerSafeRequire(data, "Areas")
+    end)
+
+    local RARITY_SCORE = {
+        Titan = 1100, Divine = 1000, Transcendent = 1000, Superior = 1000,
+        Eternal = 900, Limited = 900, Secret = 800, Exotic = 800,
+        Cosmic = 700, Exclusive = 700, Admin = 700, Mythic = 600,
+        Mythical = 600, Prismatic = 600, Rainbow = 600, ["Squishy God"] = 600,
+        BrainrotGod = 600, Legendary = 500, Epic = 400, Rare = 300,
+        SuperRare = 200, Celestial = 200, Uncommon = 200, Basic = 100, Common = 100,
+    }
+
+    local function resolveRarity(record)
+        if type(record) ~= "table" then return "Common", 100 end
+        if record.Rarity ~= nil then
+            local r = record.Rarity
+            local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
+            name = tostring(name or "Common")
+            local score = RARITY_SCORE[name]
+                or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
+                or 100
+            return name, score
+        end
+        local category = record.AssetCategory or record.Category or record.Name
+        if category and ScannerAssetsData then
+            local directory = ScannerAssetsData.Directory or ScannerAssetsData
+            local info = directory and directory[category]
+            if info and info.Rarity then
+                local r = info.Rarity
+                local name = type(r) == "table" and (r.DisplayName or r._id or r.Name) or tostring(r)
+                name = tostring(name or "Common")
+                local score = RARITY_SCORE[name]
+                    or (type(r) == "table" and tonumber(r.RarityNumber) and tonumber(r.RarityNumber) * 100)
+                    or 100
+                return name, score
+            end
+        end
+        local areas = ScannerAreasData and (ScannerAreasData.Directory or ScannerAreasData)
+        local areaInfo = areas and record.AreaId and areas[record.AreaId]
+        local rarity = areaInfo and areaInfo.Rarity
+        local rarityId = type(rarity) == "table" and (rarity._id or rarity.DisplayName or rarity.Name)
+            or (type(rarity) == "string" and rarity) or "Common"
+        local rarities = ScannerRarityData and (ScannerRarityData.Rarities or ScannerRarityData)
+        local rarityInfo = rarities and rarities[rarityId]
+        local displayName = (type(rarityInfo) == "table" and (rarityInfo.DisplayName or rarityInfo._id))
+            or (type(rarity) == "table" and rarity.DisplayName) or rarityId or "Common"
+        local score = RARITY_SCORE[displayName] or RARITY_SCORE[rarityId]
+            or (type(rarity) == "table" and tonumber(rarity.RarityNumber) and tonumber(rarity.RarityNumber) * 100)
+            or 100
+        return tostring(displayName), score
+    end
+
+    local function isBig(record)
+        if type(record) ~= "table" then return false end
+        return (tonumber(record.AssetScale) or 1) >= 1.35
+            or (tonumber(record.NestScale) or 1) >= 1.0
+    end
+
+    local function calculateScore(record)
+        local rarityName, score = resolveRarity(record)
+        local mutations = type(record.Mutations) == "table" and record.Mutations or {}
+        for _, mutation in ipairs(mutations) do
+            if mutation == "Rainbow" then score += 35
+            elseif mutation == "Gold" or mutation == "Golden" then score += 20
+            elseif mutation == "Silver" then score += 10 end
+        end
+        local parasite = record.HasParasite == true
+            or record.BaseMutation == "Parasite"
+            or record.BaseMutation == "Monstrous"
+        if not parasite then
+            for _, mutation in ipairs(mutations) do
+                if mutation == "Parasite" or mutation == "Monstrous" then parasite = true break end
+            end
+        end
+        if parasite then score += 800 end
+        if isBig(record) then score += 600 end
+        return rarityName, score
+    end
+
+    local function getSnapshot()
+        if ScannerEggState and type(ScannerEggState.ReadFieldEggs) == "function" then
+            local ok, snapshot = pcall(ScannerEggState.ReadFieldEggs)
+            if ok and type(snapshot) == "table" and type(snapshot.Records) == "table" then
+                return snapshot.Records
+            end
+        end
+        local provider = rawget(_G, "GetEggSnapshot")
+        if type(provider) == "function" then
+            local ok, snapshot = pcall(provider)
+            if ok and type(snapshot) == "table" then return snapshot.Records or snapshot end
+        end
+        return nil, "EggState.ReadFieldEggs unavailable"
+    end
+
+    local function findBestEgg()
+        local records, err = getSnapshot()
+        if type(records) ~= "table" then return nil, err or "No egg snapshot" end
+        local best
+        for _, record in ipairs(records) do
+            if type(record) == "table" and record.State == "Slot" and record.BoundsCFrame then
+                local rarityName, score = calculateScore(record)
+                local candidate = {
+                    record = record,
+                    uid = record.Uid,
+                    name = tostring(record.AssetCategory or record.Name or record.Uid or "Unknown Egg"),
+                    rarity = rarityName,
+                    score = score,
+                    area = tostring(record.AreaId or record.Area or "Unknown"),
+                }
+                if not best or candidate.score > best.score then best = candidate end
+            end
+        end
+        if not best then return nil, "No available field eggs found" end
+        return best
+    end
+
+    local ScannerTab = Window:AddTab({ Name = "Best Egg", Subtitle = "Original Main scanner", Icon = "crown" })
+    local ScannerSub = ScannerTab:AddSubTab("Scanner")
+    local scannerEnabled = false
+    local scannerTarget = "Target: None"
+    local scannerDetails = "Rarity: —   Score: —   Area: —"
+    local scannerStatus = "Status: OFF"
+
+    local targetLabel = ScannerSub:AddParagraph({ Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails })
+    local statusLabel = ScannerSub:AddParagraph({ Title = "Scanner Status", Content = scannerStatus })
+
+    local function updateScannerUi()
+        pcall(function()
+            if targetLabel and targetLabel.Set then
+                targetLabel:Set({ Title = "Current Target", Content = scannerTarget .. "\n" .. scannerDetails })
+            end
+        end)
+        pcall(function()
+            if statusLabel and statusLabel.Set then
+                statusLabel:Set({ Title = "Scanner Status", Content = scannerStatus })
+            end
+        end)
+    end
+
+    local function renderBest()
+        local best, err = findBestEgg()
+        if not best then
+            scannerTarget = "Target: None"
+            scannerDetails = "Rarity: —   Score: —   Area: —"
+            scannerStatus = "Status: " .. tostring(err or "No target")
+        else
+            scannerTarget = "Target: " .. best.name
+            scannerDetails = string.format("Rarity: %s   Score: %d   Area: %s", best.rarity, best.score, best.area)
+            scannerStatus = scannerEnabled and "Status: ON • Best value found" or "Status: Ready • Best value found"
+        end
+        updateScannerUi()
+        return best ~= nil
+    end
+
+    local function stopScanner()
+        scannerEnabled = false
+        scannerStatus = "Status: OFF"
+        updateScannerUi()
+    end
+
+    local scanThread
+    local function startScanner()
+        if scannerEnabled then return end
+        scannerEnabled = true
+        renderBest()
+        scanThread = task.spawn(function()
+            while scannerEnabled and not HUB.dead do
+                renderBest()
+                task.wait(1)
+            end
+        end)
+    end
+
+    ScannerSub:AddToggle({
+        Name = "Best Egg Scanner", Default = false, Flag = "best_egg_scanner",
+        Callback = safeCallback(function(v)
+            if v then startScanner() else stopScanner() end
+        end)
+    })
+    ScannerSub:AddButton({
+        Name = "Scan Best Egg Now", Primary = true,
+        Callback = safeCallback(function()
+            renderBest()
+            Notify("Best Egg", scannerTarget .. "\n" .. scannerDetails, "Info", 3)
+        end)
+    })
+    ScannerSub:AddParagraph({
+        Title = "Original Main.lua Scoring",
+        Content = "Rarity + Rainbow/Gold/Silver + Parasite + large-egg bonuses. Highest score wins."
+    })
+
+    _G.InstantEGGBestValue = {
+        FindBest = findBestEgg,
+        Scan = renderBest,
+        Enable = startScanner,
+        Disable = stopScanner,
+    }
+end
+
+]===], "@MainFeatures")
+
+_G.__OxideMainLibrary = nil
